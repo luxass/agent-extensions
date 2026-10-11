@@ -1,5 +1,11 @@
 # @luxass/pi-personal
 
+## 0.1.2
+
+### Patch Changes
+
+- [`1f3d711`](https://github.com/luxass/agent-extensions/commit/1f3d71168916d0d6a65800b6e79c223b796da8b6) Thanks [@luxass](https://github.com/luxass)! - Prepare the repository for plugins from multiple coding agents. Use host-prefixed package directories and update repository metadata and gallery URLs to agent-extensions. Package names, installation commands, and runtime behavior remain unchanged.
+
 ## 0.1.1
 
 ### Patch Changes
