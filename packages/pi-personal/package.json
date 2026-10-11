@@ -10,7 +10,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luxass/agent-plugins",
+    "url": "https://github.com/luxass/agent-extensions",
     "directory": "packages/pi-personal"
   },
   "files": [
@@ -35,7 +35,7 @@
     "@earendil-works/pi-tui": "*"
   },
   "pi": {
-    "image": "https://raw.githubusercontent.com/luxass/agent-plugins/main/packages/pi-personal/docs/cover.png",
+    "image": "https://raw.githubusercontent.com/luxass/agent-extensions/main/packages/pi-personal/docs/cover.png",
     "extensions": [
       "./src/continue-after-compaction.ts",
       "./src/git-interceptor.ts",

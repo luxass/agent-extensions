@@ -1,5 +1,5 @@
 {
-  "name": "agent-plugins",
+  "name": "agent-extensions",
   "private": true,
   "license": "MIT",
   "type": "module",

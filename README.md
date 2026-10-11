@@ -1,4 +1,4 @@
-# Agent plugins
+# Agent extensions
 
 Plugins for coding agents, published as separate npm packages. This repository currently contains [Pi](https://pi.dev) extensions. OpenCode plugins can be added alongside them.
 
