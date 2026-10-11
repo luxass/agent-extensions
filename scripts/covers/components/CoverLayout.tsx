@@ -30,7 +30,7 @@ export function CoverLayout({
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="m6 1 5 5-5 5-5-5Z" fill="none" stroke={accent} strokeWidth="1.5" />
         </svg>
-        <Text value="luxass.dev / pi extensions" size={12} fill={muted} />
+        <Text value="luxass.dev / agent extensions" size={12} fill={muted} />
       </div>
       <div
         style={{

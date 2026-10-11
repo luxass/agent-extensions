@@ -7,13 +7,14 @@ import satori from "satori";
 import { BtwCover, metadata as btwMetadata } from "./BtwCover.tsx";
 import { loadFonts } from "./fonts.ts";
 import { metadata as personalMetadata, PersonalCover } from "./PersonalCover.tsx";
-import { metadata as voiceMetadata, VoiceCover } from "./VoiceCover.tsx";
+import { metadata as voiceMetadata, opencodeMetadata, VoiceCover } from "./VoiceCover.tsx";
 import { metadata as whimsicalMetadata, WhimsicalCover } from "./WhimsicalCover.tsx";
 
 const fonts = await loadFonts();
 const covers = [
   { metadata: btwMetadata, element: <BtwCover /> },
   { metadata: voiceMetadata, element: <VoiceCover /> },
+  { metadata: opencodeMetadata, element: <VoiceCover host="opencode" /> },
   { metadata: personalMetadata, element: <PersonalCover /> },
   { metadata: whimsicalMetadata, element: <WhimsicalCover /> },
 ];
