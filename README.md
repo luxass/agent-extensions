@@ -1,28 +1,21 @@
 # Agent extensions
 
-Plugins for coding agents, published as separate npm packages. This repository currently contains [Pi](https://pi.dev) extensions. OpenCode plugins can be added alongside them.
+Extensions for [Pi](https://pi.dev) and [OpenCode](https://opencode.ai), published as separate npm packages. See each package's documentation for installation and usage.
 
-| Package                | What it does                                                                            | Documentation                                |
-| ---------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `@luxass/pi-btw`       | Ask side questions in a popover, then optionally send a summary to the main chat.       | [btw](packages/pi-btw/README.md)             |
-| `@luxass/pi-personal`  | Load defaults and extensions tuned to a single personal workflow.                       | [personal](packages/pi-personal/README.md)   |
-| `@luxass/pi-voice`     | Record speech, transcribe it locally or through an API, and paste it into the composer. | [Voice](packages/pi-voice/README.md)         |
-| `@luxass/pi-whimsical` | Display playful working messages while the agent runs.                                  | [Whimsical](packages/pi-whimsical/README.md) |
+## Pi extensions
 
-## Install
+| Package                | What it does                                                                      | Documentation                                |
+| ---------------------- | --------------------------------------------------------------------------------- | -------------------------------------------- |
+| `@luxass/pi-btw`       | Ask side questions in a popover, then optionally send a summary to the main chat. | [btw](packages/pi-btw/README.md)             |
+| `@luxass/pi-personal`  | Load defaults and extensions tuned to a single personal workflow.                 | [personal](packages/pi-personal/README.md)   |
+| `@luxass/pi-voice`     | Record speech and transcribe it for your prompts.                                 | [Voice](packages/pi-voice/README.md)         |
+| `@luxass/pi-whimsical` | Display playful working messages while the agent runs.                            | [Whimsical](packages/pi-whimsical/README.md) |
 
-Install whichever extensions you want:
+## OpenCode plugins
 
-```sh
-pi install npm:@luxass/pi-btw
-pi install npm:@luxass/pi-personal
-pi install npm:@luxass/pi-voice
-pi install npm:@luxass/pi-whimsical
-```
-
-Use `/btw` for side questions, and `/voice` or **Ctrl+Shift+V** for recording. Whimsical and personal load automatically.
-
-Voice recording requires `sox`. Local transcription also requires `whisper-cli` and a Whisper model. API transcription does not require Whisper. Run `/voice doctor` to check your setup.
+| Package                  | What it does                                      | Documentation                              |
+| ------------------------ | ------------------------------------------------- | ------------------------------------------ |
+| `@luxass/opencode-voice` | Record speech and transcribe it for your prompts. | [Voice](packages/opencode-voice/README.md) |
 
 ## Development
 
