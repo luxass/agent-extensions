@@ -13,8 +13,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luxass/pi-extensions",
-    "directory": "packages/whimsical"
+    "url": "https://github.com/luxass/agent-plugins",
+    "directory": "packages/pi-whimsical"
   },
   "files": [
     "src",
@@ -36,7 +36,7 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {
-    "image": "https://raw.githubusercontent.com/luxass/pi-extensions/main/packages/whimsical/docs/cover.png",
+    "image": "https://raw.githubusercontent.com/luxass/agent-plugins/main/packages/pi-whimsical/docs/cover.png",
     "extensions": [
       "./src/whimsical.ts"
     ]
