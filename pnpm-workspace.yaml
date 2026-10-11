@@ -12,7 +12,7 @@ overrides:
   semver: 7.8.5
 
 minimumReleaseAgeExclude:
-  - "@luxass/agent-voice@0.5.0"
+  - "@luxass/agent-voice@0.5.1"
 
 catalogs:
   types:
@@ -30,7 +30,7 @@ catalogs:
     "@opentui/solid": 0.5.12
 
   agent:
-    "@luxass/agent-voice": 0.5.0
+    "@luxass/agent-voice": 0.5.1
 
   dev:
     "@changesets/changelog-github": 1.0.1

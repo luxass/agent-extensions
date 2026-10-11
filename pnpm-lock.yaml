@@ -165,8 +165,8 @@ settings:
 catalogs:
   agent:
     '@luxass/agent-voice':
-      specifier: 0.5.0
-      version: 0.5.0
+      specifier: 0.5.1
+      version: 0.5.1
   dev:
     '@changesets/changelog-github':
       specifier: 1.0.1
@@ -286,7 +286,7 @@ importers:
     dependencies:
       '@luxass/agent-voice':
         specifier: catalog:agent
-        version: 0.5.0
+        version: 0.5.1
       '@opencode/plugin':
         specifier: catalog:opencode
         version: 2.0.8(@opentelemetry/api-logs@0.214.0)(@opentelemetry/resources@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.214.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.43.0)(@opentui/core@0.5.12(typescript@7.0.2)(web-tree-sitter@0.25.10))(@opentui/solid@0.5.12(solid-js@1.9.12)(typescript@7.0.2)(web-tree-sitter@0.25.10))(redis@6.3.0(@opentelemetry/api@1.9.0))(solid-js@1.9.12)
@@ -334,7 +334,7 @@ importers:
         version: 1.0.1
       '@luxass/agent-voice':
         specifier: catalog:agent
-        version: 0.5.0
+        version: 0.5.1
 
   packages/pi-whimsical:
     dependencies:
@@ -1080,8 +1080,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@luxass/agent-voice@0.5.0':
-    resolution: {integrity: sha512-pYHF1WAbdX+VEj05kkw8vw1xAaXXut1+8xinFa+FgUYA76/ght8SSybK7jyva1VrxSxsxSgPTUUnvHfCmBARDQ==}
+  '@luxass/agent-voice@0.5.1':
+    resolution: {integrity: sha512-e42itlImlBMfXcEzWydBt9qPmR8Jja6lYgZ+pPowRg2K66RX1GxsWXcmXMeB2WJURGovoV9gx/aoC1m3i2M8YA==}
     engines: {node: '>=24'}
 
   '@manypkg/find-root@3.1.0':
@@ -4048,7 +4048,7 @@ snapshots:
   '@koromix/koffi-win32-x64@3.3.2':
     optional: true
 
-  '@luxass/agent-voice@0.5.0':
+  '@luxass/agent-voice@0.5.1':
     dependencies:
       '@handy-computer/recorder': 0.1.0
       transcribe-cpp: 0.2.4

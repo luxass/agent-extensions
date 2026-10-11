@@ -12,7 +12,7 @@ Add the package to `~/.config/opencode/cli.json`:
 }
 ```
 
-Requires microphone access. Linux also needs `libasound.so.2` and `wl-copy` on Wayland or `xclip` on X11 for clipboard delivery. Run `/voice setup` to choose a local or API transcription profile and an input device. Local transcription uses GGUF models; the model picker can download Whisper or Parakeet models. OpenCode runs on Bun, where local transcription is currently unsupported; choose an API profile to record and transcribe.
+Requires microphone access. Linux also needs `libasound.so.2` and `wl-copy` on Wayland or `xclip` on X11 for clipboard delivery. Run `/voice setup` to choose a local or API transcription profile and an input device. Local transcription uses GGUF models; the model picker can download Whisper or Parakeet models. Local transcription under Bun requires Bun 1.4.0 or later. On older Bun versions, upgrade Bun or choose an API profile to record and transcribe.
 
 ## Use
 
