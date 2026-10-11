@@ -8,6 +8,9 @@ catalogMode: prefer
 strictDepBuilds: true
 blockExoticSubdeps: true
 
+overrides:
+  semver: 7.8.5
+
 minimumReleaseAgeExclude:
   - "@luxass/agent-voice@0.5.0"
 
@@ -21,6 +24,10 @@ catalogs:
     "@earendil-works/pi-ai": 1.0.1
     "@earendil-works/pi-coding-agent": 1.0.1
     "@earendil-works/pi-tui": 1.0.1
+
+  opencode:
+    "@opencode/plugin": 2.0.8
+    "@opentui/solid": 0.5.12
 
   agent:
     "@luxass/agent-voice": 0.5.0

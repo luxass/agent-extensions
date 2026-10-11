@@ -1,0 +1,48 @@
+{
+  "name": "@luxass/opencode-voice",
+  "version": "0.0.0",
+  "description": "Native microphone capture and transcription for the OpenCode terminal",
+  "keywords": [
+    "dictation",
+    "opencode",
+    "opencode-plugin",
+    "speech-to-text",
+    "transcription",
+    "voice"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxass/agent-extensions",
+    "directory": "packages/opencode-voice"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tui": "./src/tui.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings .",
+    "lint:fix": "oxlint --fix --deny-warnings .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@luxass/agent-voice": "catalog:agent",
+    "@opencode/plugin": "catalog:opencode",
+    "@opentui/solid": "catalog:opencode",
+    "typebox": "catalog:types"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
