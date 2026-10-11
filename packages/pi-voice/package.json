@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luxass/pi-extensions",
+    "url": "https://github.com/luxass/agent-plugins",
     "directory": "packages/pi-voice"
   },
   "files": [
@@ -46,7 +46,7 @@
     "node": ">=24"
   },
   "pi": {
-    "image": "https://raw.githubusercontent.com/luxass/pi-extensions/main/packages/pi-voice/docs/cover.png",
+    "image": "https://raw.githubusercontent.com/luxass/agent-plugins/main/packages/pi-voice/docs/cover.png",
     "extensions": [
       "./src/index.ts"
     ]
