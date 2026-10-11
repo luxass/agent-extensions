@@ -14,7 +14,7 @@ import {
   type VoiceSettings,
 } from "@luxass/agent-voice";
 import * as Plugin from "@opencode/plugin/tui/plugin";
-import { createDynamic } from "@opentui/solid";
+import { createDynamic, type TextProps } from "@opentui/solid";
 
 import { copyToClipboard } from "./clipboard";
 import { resolveOptions } from "./config";
@@ -31,6 +31,7 @@ const SUBCOMMANDS = [
   { value: "profile model", description: "change the active profile's model" },
   { value: "doctor", description: "check recording and transcription setup" },
   { value: "status", description: "show profile and input" },
+  { value: "help", description: "show voice commands" },
 ];
 
 const DOCTOR_FIXES: Partial<Record<DoctorCheckId, string>> = {
@@ -75,12 +76,22 @@ export default Plugin.define({
 
     ui.slot({
       append: "prompt.footer.status",
-      render: () =>
-        createDynamic(() => "text", {
+      render: (input) => {
+        const props = {
+          height: 1,
+          minWidth: 0,
+          flexShrink: 1,
+          wrapMode: "none",
+          truncate: true,
           get children() {
             return status.text;
           },
-        }),
+        } satisfies TextProps;
+        return createDynamic(
+          () => (input.mode === "normal" && status.text ? "text" : undefined),
+          props,
+        );
+      },
     });
 
     function notify(message: string, variant: "info" | "warning" | "error" = "info"): void {
@@ -99,9 +110,10 @@ export default Plugin.define({
       configuration = { settings, errors: [] };
     }
 
-    function showStatus(settings: VoiceSettings, state?: string): void {
+    function showStatus(state = recording ? "● recording" : "idle"): void {
       setStatus((draft) => {
-        draft.text = statusText(settings, state ?? (recording ? "● recording" : "idle"));
+        // Profile, model, and input details belong in /voice status, not the shared footer.
+        draft.text = state === "idle" || state === "ready" ? "" : `voice: ${state}`;
       });
     }
 
@@ -116,7 +128,7 @@ export default Plugin.define({
       const checks = await runDoctor(draft);
       save(draft);
       const ready = checks.every(({ ok }) => ok);
-      showStatus(draft, ready ? "ready" : "needs setup");
+      showStatus(ready ? "ready" : "setup");
       notify(
         ready
           ? "Voice is ready. Press Ctrl+Shift+V or run /voice to record."
@@ -141,14 +153,14 @@ export default Plugin.define({
         if (recording) {
           const active = recording;
           recording = undefined;
-          showStatus(active.settings, "transcribing…");
+          showStatus("transcribing…");
           try {
             const audio = await active.recorder.stop();
             const text = await transcribe(audio, getActiveProfile(active.settings).transcription);
             await copyToClipboard(text);
             notify("Transcription copied; paste it into the composer");
           } finally {
-            showStatus(active.settings);
+            showStatus();
           }
           return;
         }
@@ -169,23 +181,23 @@ export default Plugin.define({
           recorder: (recorder ??= await createRecorder()),
         };
         recording = active;
-        showStatus(active.settings, "starting…");
+        showStatus("starting…");
         try {
           await active.recorder.start({
             input: active.settings.inputDevice,
             onError: (error) => {
               recording = undefined;
-              showStatus(active.settings);
+              showStatus();
               notify(`Recording failed: ${error.message}`, "error");
             },
           });
         } catch (error) {
           recording = undefined;
-          showStatus(active.settings);
+          showStatus();
           throw error;
         }
         if (!active.recorder.isRecording) return;
-        showStatus(active.settings);
+        showStatus();
         notify(
           `Recording from ${active.settings.inputDevice?.name ?? "system default"}… run again to transcribe`,
         );
@@ -209,10 +221,8 @@ export default Plugin.define({
         },
         {
           id: "voice",
-          title: "Voice: /voice <subcommand>",
-          description: SUBCOMMANDS.map(({ value, description }) => `${value}: ${description}`).join(
-            "\n",
-          ),
+          title: "Voice: record or configure",
+          description: "Record speech · setup: /voice setup",
           group: "Voice",
           slash: { name: "voice", arguments: true },
           run: async (args = "") => {
@@ -229,7 +239,7 @@ export default Plugin.define({
                   const active = recording;
                   recording = undefined;
                   await active.recorder.cancel();
-                  showStatus(active.settings);
+                  showStatus();
                   notify("Recording discarded");
                   return;
                 }
@@ -237,6 +247,24 @@ export default Plugin.define({
                   await setup();
                   return;
                 }
+                case "help": {
+                  await ui.dialog.alert({
+                    title: "Voice commands",
+                    message: [
+                      "/voice or Ctrl+Shift+V: start or stop recording",
+                      "",
+                      ...SUBCOMMANDS.map(
+                        ({ value, description }) => `/voice ${value}: ${description}`,
+                      ),
+                    ].join("\n"),
+                  });
+                  return;
+                }
+              }
+
+              if (!SUBCOMMANDS.some(({ value }) => value === command)) {
+                notify("Unknown voice command. Run /voice help.", "warning");
+                return;
               }
 
               const { settings } = configuration;
@@ -254,7 +282,7 @@ export default Plugin.define({
                   if (selected === undefined) return;
                   const draft = { ...settings, inputDevice: selected.inputDevice };
                   save(draft);
-                  showStatus(draft);
+                  showStatus();
                   notify(`Voice input: ${selected.inputDevice?.name ?? "system default"}`);
                   return;
                 }
@@ -270,7 +298,7 @@ export default Plugin.define({
                   if (selected === undefined) return;
                   const draft = { ...settings, activeProfile: selected };
                   save(draft);
-                  showStatus(draft);
+                  showStatus();
                   notify(`Voice profile: ${selected}`);
                   return;
                 }
@@ -283,7 +311,7 @@ export default Plugin.define({
                     profiles: { ...settings.profiles, [added.name]: added.profile },
                   };
                   save(draft);
-                  showStatus(draft);
+                  showStatus();
                   notify(`Voice profile: ${added.name}`);
                   return;
                 }
@@ -304,7 +332,7 @@ export default Plugin.define({
                     profiles: { ...settings.profiles, [name]: { ...transcription, model } },
                   };
                   save(draft);
-                  showStatus(draft);
+                  showStatus();
                   notify(`Voice profile ${name}: ${model}`);
                   return;
                 }
@@ -320,10 +348,7 @@ export default Plugin.define({
                   return;
                 }
                 default: {
-                  notify(
-                    `Usage: /voice [${SUBCOMMANDS.map(({ value }) => value).join(" | ")}]`,
-                    "warning",
-                  );
+                  notify("Unknown voice command. Run /voice help.", "warning");
                 }
               }
             } catch (error) {
@@ -340,11 +365,9 @@ export default Plugin.define({
 
     const { settings, errors } = configuration;
     if (settings) {
-      showStatus(settings);
+      showStatus();
     } else {
-      setStatus((draft) => {
-        draft.text = "[voice] needs setup · /voice setup";
-      });
+      showStatus("setup");
     }
     if (errors.length > 0) notify(setupMessage(), "warning");
 

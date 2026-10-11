@@ -18,6 +18,8 @@ Requires microphone access. Linux also needs `libasound.so.2` and `wl-copy` on W
 
 Press **Ctrl+Shift+V** or run `/voice` to start recording. Requirements are checked before the microphone starts. If something is missing, Voice explains it and offers to open setup. Completing setup does not start recording; press the shortcut or run `/voice` again when you are ready. Press it again to stop, transcribe, and copy the result to the clipboard. Paste it into the composer yourself. The plugin does not send your message for you.
 
+The footer shows a short setup or recording status on one line. Voice hides it when idle and in shell mode. Run `/voice status` for profile, model, and input details.
+
 | Command                | Purpose                                              |
 | ---------------------- | ---------------------------------------------------- |
 | `/voice`               | Start or stop recording and transcribe on stop.      |
@@ -28,6 +30,7 @@ Press **Ctrl+Shift+V** or run `/voice` to start recording. Requirements are chec
 | `/voice profile`       | Switch between saved profiles.                       |
 | `/voice profile model` | Change the active profile's model.                   |
 | `/voice status`        | Show the current profile and input device.           |
+| `/voice help`          | Show the full command list.                          |
 | `/voice doctor`        | Check recording and transcription setup.             |
 
 A local profile without an explicit model uses the first GGUF model in `~/.cache/agent-voice`. Set `AGENT_VOICE_MODEL_DIR` to keep models elsewhere. For API transcription, `/voice profile add` asks for the endpoint, model, request format, and **name of an environment variable** holding the API key. Keep the key in your environment, not in the settings file.
