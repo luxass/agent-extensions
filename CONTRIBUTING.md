@@ -44,9 +44,13 @@ Keep `strict`, unchecked-index checks, override checks, and unused-code checks e
 
 Prefer fixing a lint finding. When a suppression is necessary, keep it local and explain why. Unused lint suppressions fail checks. New safety rules should be explicit rather than enabling the entire pedantic category.
 
-## Adding an extension
+## Adding a plugin
 
-Create a package under `packages/` with a `package.json`, `src/`, and this `tsconfig.json`:
+Keep packages directly under `packages/`. Name host-specific directories `<host>-<feature>`, such as `pi-btw` or `opencode-voice`. Keep existing npm package names stable when moving directories.
+
+Keep host APIs and entry points in their own packages. Add shared packages only when multiple plugins need the same code. Declare shared runtime packages as dependencies, rather than importing source from sibling directories. Shared packages must be published before or with the plugins that depend on them.
+
+Create a package with a `package.json`, `src/`, and this `tsconfig.json`:
 
 ```json
 {
@@ -69,7 +73,9 @@ Use the same scripts as existing packages:
 }
 ```
 
-Keep the published `files` list limited to source and package documentation. Tests belong in `tests/`, outside published `src/`. Declare Pi entry points under `pi.extensions` and runtime dependencies in the package manifest.
+Keep the published `files` list limited to source and package documentation. Tests belong in `tests/`, outside published `src/`. Declare runtime dependencies in the package manifest. Pi packages declare entry points under `pi.extensions`. OpenCode packages declare the exports required by their target OpenCode version. Keep host dependencies in the packages that need them.
+
+Extend the shared TypeScript configuration. Add package-specific compiler settings when the host requires them. Do not assume that every host uses Pi's loader or runtime.
 
 Root typechecking executes `tsc` in every workspace package directly. A missing package typecheck script cannot silently skip the package, and a missing `tsconfig.json` fails the check.
 

@@ -5,7 +5,7 @@ import { Text } from "./components/Text.tsx";
 import { accent, border, muted } from "./theme.ts";
 
 export const metadata = {
-  directory: "btw",
+  directory: "pi-btw",
   packageName: "@luxass/pi-btw",
   title: "pi-btw",
   description: "A quick detour, not a new task. Ask in context, then pick up where you left off.",

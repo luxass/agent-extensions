@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   select-mode:
-    if: ${{ github.repository == 'luxass/pi-extensions' }}
+    if: ${{ github.repository == 'luxass/pi-extensions' || github.repository == 'luxass/agent-plugins' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -52,7 +52,7 @@ jobs:
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: luxass
-          repositories: pi-extensions
+          repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-pull-requests: write
 

@@ -1,13 +1,13 @@
-# Pi extensions
+# Agent plugins
 
-Extensions for [Pi](https://pi.dev), published as separate npm packages.
+Plugins for coding agents, published as separate npm packages. This repository currently contains [Pi](https://pi.dev) extensions. OpenCode plugins can be added alongside them.
 
-| Package                | What it does                                                                            | Documentation                             |
-| ---------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `@luxass/pi-btw`       | Ask side questions in a popover, then optionally send a summary to the main chat.       | [btw](packages/btw/README.md)             |
-| `@luxass/pi-personal`  | Load defaults and extensions tuned to a single personal workflow.                       | [personal](packages/personal/README.md)   |
-| `@luxass/pi-voice`     | Record speech, transcribe it locally or through an API, and paste it into the composer. | [Voice](packages/pi-voice/README.md)      |
-| `@luxass/pi-whimsical` | Display playful working messages while the agent runs.                                  | [Whimsical](packages/whimsical/README.md) |
+| Package                | What it does                                                                            | Documentation                                |
+| ---------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `@luxass/pi-btw`       | Ask side questions in a popover, then optionally send a summary to the main chat.       | [btw](packages/pi-btw/README.md)             |
+| `@luxass/pi-personal`  | Load defaults and extensions tuned to a single personal workflow.                       | [personal](packages/pi-personal/README.md)   |
+| `@luxass/pi-voice`     | Record speech, transcribe it locally or through an API, and paste it into the composer. | [Voice](packages/pi-voice/README.md)         |
+| `@luxass/pi-whimsical` | Display playful working messages while the agent runs.                                  | [Whimsical](packages/pi-whimsical/README.md) |
 
 ## Install
 
@@ -36,16 +36,16 @@ pnpm check
 Try an extension from the checkout:
 
 ```sh
-pi -e ./packages/btw
+pi -e ./packages/pi-btw
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for shared TypeScript settings, linting, formatting, and the new-package checklist. There is no build step. The packages ship TypeScript source.
 
-## Package gallery
+## Pi package gallery
 
 The [Pi package gallery](https://pi.dev/packages) discovers npm packages tagged with the `pi-package` keyword. Pi's [package documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md#create-a-package) describes the discovery metadata.
 
-Each extension in this repository already has:
+Each Pi extension in this repository already has:
 
 - The `pi-package` keyword.
 - A `pi.extensions` manifest pointing to its source entry point.

@@ -266,7 +266,19 @@ importers:
         specifier: catalog:dev
         version: 7.0.2
 
-  packages/btw:
+  packages/pi-btw:
+    dependencies:
+      '@earendil-works/pi-ai':
+        specifier: '*'
+        version: 1.0.1(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.21.3)
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 1.0.1(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.21.3)
+      '@earendil-works/pi-tui':
+        specifier: '*'
+        version: 1.0.1
+
+  packages/pi-personal:
     dependencies:
       '@earendil-works/pi-ai':
         specifier: '*'
@@ -293,7 +305,7 @@ importers:
         specifier: catalog:agent
         version: 0.5.0
 
-  packages/whimsical:
+  packages/pi-whimsical:
     dependencies:
       '@earendil-works/pi-coding-agent':
         specifier: '*'

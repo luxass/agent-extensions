@@ -5,7 +5,7 @@ import { Text } from "./components/Text.tsx";
 import { accent, border, muted } from "./theme.ts";
 
 export const metadata = {
-  directory: "personal",
+  directory: "pi-personal",
   packageName: "@luxass/pi-personal",
   title: "pi-personal",
   description: "Small touches tuned to one workflow, collected in a single package.",

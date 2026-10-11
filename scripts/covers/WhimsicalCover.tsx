@@ -4,7 +4,7 @@ import { Text } from "./components/Text.tsx";
 import { accent, border, muted } from "./theme.ts";
 
 export const metadata = {
-  directory: "whimsical",
+  directory: "pi-whimsical",
   packageName: "@luxass/pi-whimsical",
   title: "pi-whimsical",
   description: "Pi has work to do. Its status messages have other ideas.",
