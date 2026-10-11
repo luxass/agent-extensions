@@ -1,6 +1,6 @@
 {
   "name": "@luxass/opencode-voice",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Native microphone capture and transcription for the OpenCode terminal",
   "keywords": [
     "dictation",
