@@ -1,0 +1,44 @@
+{
+  "name": "@luxass/opencode-personal",
+  "version": "0.0.0",
+  "description": "Personal OpenCode plugins collected in one package, tuned to a single workflow.",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "personal"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxass/agent-extensions",
+    "directory": "packages/opencode-personal"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./git-interceptor": "./src/git-interceptor.ts",
+    "./package-manager-interceptor": "./src/package-manager-interceptor.ts",
+    "./worker-configuration-guard": "./src/worker-configuration-guard.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings .",
+    "lint:fix": "oxlint --fix --deny-warnings .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@opencode/plugin": "catalog:opencode"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
