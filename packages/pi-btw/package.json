@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-btw",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Ask /btw side questions in a popover without derailing your main Pi conversation.",
   "keywords": [
     "btw",
