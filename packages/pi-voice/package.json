@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-voice",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Record voice input with /voice, transcribe locally or through an API, and paste it into Pi's composer.",
   "keywords": [
     "dictation",
