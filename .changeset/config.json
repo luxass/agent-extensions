@@ -1,5 +1,5 @@
 {
-  "changelog": ["@changesets/changelog-github", { "repo": "luxass/pi-extensions" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "luxass/agent-extensions" }],
   "commit": false,
   "access": "public",
   "baseBranch": "main",
