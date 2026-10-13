@@ -1,6 +1,6 @@
 {
   "name": "@luxass/opencode-personal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Personal OpenCode plugins collected in one package, tuned to a single workflow.",
   "keywords": [
     "opencode",

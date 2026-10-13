@@ -1,5 +1,11 @@
 # @luxass/opencode-personal
 
+## 0.2.0
+
+### Minor Changes
+
+- [#12](https://github.com/luxass/agent-extensions/pull/12) [`a2b3899`](https://github.com/luxass/agent-extensions/commit/a2b38997f19b69581e2f31885f6ca729abccd49a) Thanks [@luxass](https://github.com/luxass)! - Add a native Crow provider for CPA with API-key login and model discovery. Read model metadata from CPA, including models absent from OpenCode's catalog. Use matching OpenCode price estimates and native HTTP Responses streaming. Refresh available models after credential changes or with `/cliproxyapi-refresh`.
+
 ## 0.1.0
 
 ### Minor Changes
