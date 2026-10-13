@@ -38,6 +38,7 @@
     "image": "https://raw.githubusercontent.com/luxass/agent-extensions/main/packages/pi-personal/docs/cover.png",
     "extensions": [
       "./src/continue-after-compaction.ts",
+      "./src/dependency-policy.ts",
       "./src/git-interceptor.ts",
       "./src/package-manager-interceptor.ts",
       "./src/worker-configuration-guard.ts",

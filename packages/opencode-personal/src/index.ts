@@ -1,6 +1,7 @@
 import { Plugin } from "@opencode/plugin";
 
 import crow from "./crow/index.ts";
+import dependencyPolicy from "./dependency-policy.ts";
 import gitInterceptor from "./git-interceptor.ts";
 import packageManagerInterceptor from "./package-manager-interceptor.ts";
 import workerConfigurationGuard from "./worker-configuration-guard.ts";
@@ -8,6 +9,7 @@ import workerConfigurationGuard from "./worker-configuration-guard.ts";
 export const id = "opencode-personal";
 const plugins: readonly Plugin.Plugin[] = [
   crow,
+  dependencyPolicy,
   gitInterceptor,
   packageManagerInterceptor,
   workerConfigurationGuard,

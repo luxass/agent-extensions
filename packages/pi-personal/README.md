@@ -14,4 +14,6 @@ The custom header pairs an ASCII terminal-robot mascot with the project, model, 
 
 Run `/resources` to inspect detected context files, skill commands, and extensions. This list is inferred from files and registered commands/tools, not a complete inventory of loaded resources.
 
+The dependency policy tells the model to reuse existing code, installed dependencies, and platform APIs first. It requires explicit user approval before adding, replacing, or upgrading dependencies. Routine installs of existing dependencies remain allowed through Socket Firewall. This is a model instruction, not an enforced approval gate.
+
 The package also includes Crow provider support, compaction continuation, Git and package-manager interceptors, and a worker configuration guard. These defaults suit one workflow and are meant to be edited in place rather than configured through settings.
