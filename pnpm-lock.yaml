@@ -202,6 +202,9 @@ catalogs:
     '@opentui/solid':
       specifier: 0.5.12
       version: 0.5.12
+    effect:
+      specifier: 4.0.0-rc.112
+      version: 4.0.0-rc.112
   pi:
     '@earendil-works/pi-ai':
       specifier: 1.0.1
@@ -281,6 +284,9 @@ importers:
       '@opencode/plugin':
         specifier: catalog:opencode
         version: 2.0.8(@opentelemetry/api-logs@0.214.0)(@opentelemetry/resources@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.214.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.43.0)(@opentui/core@0.5.12(typescript@7.0.2)(web-tree-sitter@0.25.10))(@opentui/solid@0.5.12(solid-js@1.9.12)(typescript@7.0.2)(web-tree-sitter@0.25.10))(redis@6.3.0(@opentelemetry/api@1.9.0))(solid-js@1.9.12)
+      effect:
+        specifier: catalog:opencode
+        version: 4.0.0-rc.112
 
   packages/opencode-voice:
     dependencies:
