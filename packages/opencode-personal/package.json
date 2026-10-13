@@ -21,6 +21,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./crow": "./src/crow/index.ts",
     "./git-interceptor": "./src/git-interceptor.ts",
     "./package-manager-interceptor": "./src/package-manager-interceptor.ts",
     "./worker-configuration-guard": "./src/worker-configuration-guard.ts"
@@ -36,7 +37,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@opencode/plugin": "catalog:opencode"
+    "@opencode/plugin": "catalog:opencode",
+    "effect": "catalog:opencode"
   },
   "engines": {
     "node": ">=24"
