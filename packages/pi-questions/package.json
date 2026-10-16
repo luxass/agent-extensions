@@ -36,6 +36,7 @@
     "typebox": "*"
   },
   "pi": {
+    "image": "https://raw.githubusercontent.com/luxass/agent-extensions/main/packages/pi-questions/docs/cover.png",
     "extensions": [
       "./src/index.ts"
     ]
