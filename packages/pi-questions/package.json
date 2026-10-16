@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-questions",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Ask structured questions in Pi with tabs, choices, notes, and Markdown previews.",
   "keywords": [
     "pi",
