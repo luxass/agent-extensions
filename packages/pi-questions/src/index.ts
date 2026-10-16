@@ -15,7 +15,7 @@ import {
   type Questions,
 } from "./questions.ts";
 
-const TOOL_NAME = "ask_user_question";
+const TOOL_NAME = "ask_questions";
 // Only one questionnaire can own Pi's editor slot. Others stack at the bottom as overlays.
 let inlineInUse = false;
 
@@ -71,13 +71,15 @@ async function showQuestions(
     signal?.removeEventListener("abort", abort);
   }
 }
-export default function askUserQuestion(pi: ExtensionAPI) {
+export default function askQuestions(pi: ExtensionAPI) {
   pi.registerTool<typeof QuestionsSchema, QuestionResult>({
     name: TOOL_NAME,
     label: "Ask user",
     description: `Ask the user 1–${MAX_QUESTIONS} related questions in a tabbed questionnaire. Give each question ${MIN_OPTIONS}–${MAX_OPTIONS} distinct options with descriptions. Optional previews are Markdown: use code fences for code or ASCII mockups. The user can select one or several options, type a custom answer, add notes, and review before submitting. Do not author ${RESERVED_LABELS_TEXT} options. Never treat cancellation or unanswered questions as approval.`,
-    promptSnippet: "Ask the user to decide between concrete alternatives instead of guessing.",
+    promptSnippet:
+      "Clarify unclear goals, scope, and constraints before implementation instead of guessing.",
     promptGuidelines: [
+      `Before implementing a new system or substantial feature, use ${TOOL_NAME} to clarify unclear goals, scope, and constraints. Skip questions the user has already answered.`,
       `Use ${TOOL_NAME} when a meaningful user decision blocks progress, not for routine implementation details.`,
       "Batch related questions and describe the trade-offs of each option. The UI supplies custom answers and notes.",
       "Include Markdown previews when examples help the user compare alternatives.",

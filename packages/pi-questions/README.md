@@ -12,7 +12,9 @@ Requires interactive Pi. RPC, JSON, and print modes are not supported. There are
 
 ## Use
 
-The model uses `ask_user_question` when a decision needs your input. You can also ask it to use the tool explicitly. Each questionnaire accepts one to four questions, with two to four options per question.
+The model can use `ask_questions` without an explicit request. Its instructions tell it to clarify unclear goals, scope, and constraints before implementing a new system or substantial feature. It skips questions you already answered and routine implementation details. You can also ask it to use the tool explicitly.
+
+Each questionnaire accepts one to four questions, with two to four options per question.
 
 The questionnaire opens below the conversation in Pi's editor area. With one question, confirming an answer submits it directly. With multiple questions, selecting an option moves to the next tab. The final Review tab lets you submit or cancel.
 
