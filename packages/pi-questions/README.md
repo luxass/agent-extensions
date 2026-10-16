@@ -41,4 +41,4 @@ Press n outside text editors to add a note. Enter or Escape saves the note. Note
 
 Cancelling discards all draft answers. The questionnaire also closes when the agent aborts its request. Unanswered questions remain undecided.
 
-In fullscreen Pi, Page Up, Page Down, and the mouse wheel scroll the conversation while you answer. In regular mode, use your terminal's scrollback controls.
+In fullscreen Pi, click a question header or Review to switch tabs. Clicking another tab saves an open note and keeps custom-answer drafts. Page Up, Page Down, and the mouse wheel scroll the conversation while you answer. In regular mode, use keyboard navigation and your terminal's scrollback controls.

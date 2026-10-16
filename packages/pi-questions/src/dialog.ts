@@ -15,6 +15,8 @@ import {
   type Focusable,
   type KeybindingsManager,
   type TUI,
+  type TuiMouseEvent,
+  type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
 
 import {
@@ -64,6 +66,8 @@ export class QuestionDialog implements Component, Focusable {
   private selectedLine = 0;
   private page = 1;
   private warning = "";
+  private headerTargets: { tab: number; start: number; end: number }[] = [];
+  private mouseWidth = 0;
 
   constructor(options: DialogOptions) {
     this.options = options;
@@ -266,6 +270,20 @@ export class QuestionDialog implements Component, Focusable {
     return component.render(width);
   }
 
+  private get answeredCount(): number {
+    return this.drafts.filter((draft) => draft.selected.size > 0 || draft.custom.trim()).length;
+  }
+
+  /** Keep selection backgrounds inside the content pane, including wrapped lines. */
+  private highlight(text: string, width: number, active: boolean): string {
+    if (!active) return text;
+    const fitted = truncateToWidth(text, width, "");
+    return this.options.theme.bg(
+      "selectedBg",
+      fitted + " ".repeat(Math.max(0, width - visibleWidth(fitted))),
+    );
+  }
+
   private questionBody(width: number): string[] {
     const question = this.questions[this.tab]!;
     const draft = this.drafts[this.tab]!;
@@ -275,28 +293,39 @@ export class QuestionDialog implements Component, Focusable {
     const lines: string[] = [];
     const current = this.rows[this.tab]!;
     const add = (index: number, label: string, description?: string) => {
-      if (index === current) this.selectedLine = lines.length;
+      const active = index === current;
+      if (active) this.selectedLine = lines.length;
+      const title = this.wrap(
+        `${active ? "›" : " "} ${label}`,
+        leftWidth,
+        active ? "accent" : "text",
+      );
       lines.push(
-        ...this.wrap(
-          `${index === current ? ">" : " "} ${label}`,
-          leftWidth,
-          index === current ? "accent" : "text",
+        ...title.map((line) =>
+          this.highlight(active ? this.options.theme.bold(line) : line, leftWidth, active),
         ),
       );
-      if (description) lines.push(...this.wrap(`    ${description}`, leftWidth, "muted"));
+      if (description) {
+        const indent = Math.min(7, Math.max(0, leftWidth - 1));
+        lines.push(
+          ...this.wrap(description, leftWidth - indent, "muted").map((line) =>
+            this.highlight(" ".repeat(indent) + line, leftWidth, active),
+          ),
+        );
+      }
       lines.push("");
     };
     question.options.forEach((option, index) => {
       const checked = draft.selected.has(index);
-      const marker = question.multiSelect ? (checked ? "[x]" : "[ ]") : checked ? "(x)" : "( )";
-      add(index, `${marker} ${index + 1}. ${option.label}`, option.description);
+      const marker = question.multiSelect ? (checked ? "■" : "□") : checked ? "●" : "○";
+      add(index, `${marker} ${index + 1}  ${option.label}`, option.description);
     });
     // Uncommitted editor text wins over the committed custom answer.
     const customText =
       this.editors.get(`${this.tab}:custom`)?.getExpandedText().trim() || draft.custom;
     add(
       question.options.length,
-      `${question.multiSelect ? (customText ? "[x] " : "[ ] ") : ""}Type something.`,
+      `${question.multiSelect ? (customText ? "■ " : "□ ") : "✎ "}Type something.`,
       this.mode === "custom" ? undefined : customText || "Write your own answer.",
     );
     if (this.mode === "custom") lines.push(...this.editor("custom").render(width), "");
@@ -308,13 +337,15 @@ export class QuestionDialog implements Component, Focusable {
       );
     else if (question.multiSelect)
       add(question.options.length + 1, "Next", "Keep these choices and move to the next tab.");
-    if (draft.notes) lines.push(...this.wrap(`Note: ${draft.notes}`, leftWidth, "muted"));
-    if (this.warning) lines.push(...this.wrap(this.warning, leftWidth, "warning"));
+    if (draft.notes) lines.push(...this.wrap(`✎ Note: ${draft.notes}`, leftWidth, "muted"));
+    if (this.warning) lines.push(...this.wrap(`! ${this.warning}`, leftWidth, "warning"));
     if (!preview) return lines;
     const previewWidth = sideBySide ? width - leftWidth - 3 : width;
     const rendered = this.previewLines(preview, previewWidth);
     const pane = [
-      this.options.theme.fg("muted", "Preview · p opens full view"),
+      this.options.theme.fg("accent", "Preview"),
+      ...this.wrap(question.options[current]!.label, previewWidth, "muted"),
+      this.options.theme.fg("borderMuted", "─".repeat(previewWidth)),
       ...rendered.slice(0, 10),
     ];
     if (rendered.length > 10) pane.push(this.options.theme.fg("dim", "… press p to read more"));
@@ -332,16 +363,29 @@ export class QuestionDialog implements Component, Focusable {
 
   private reviewBody(width: number): string[] {
     const result = collectAnswers(this.options.params, this.drafts, this.globalNote);
-    const lines = [...this.wrap("Review your answers", width, "accent"), ""];
+    const lines = [
+      this.options.theme.bold(this.options.theme.fg("accent", "Review your answers")),
+      ...this.wrap(
+        "Tab to revisit a question. Unanswered questions stay undecided.",
+        width,
+        "muted",
+      ),
+      "",
+    ];
     this.questions.forEach((question, index) => {
       const answer = result.answers.find((candidate) => candidate.questionIndex === index);
+      const answered = !result.unanswered?.includes(index);
       lines.push(
         ...this.wrap(
-          `${index + 1}. ${question.header}: ${answer ? answerText(answer) : "Not answered"}`,
+          `${answered ? "✓" : "○"} ${index + 1}. ${question.header}`,
           width,
+          answered ? "accent" : "warning",
         ),
+        ...this.wrap(question.question, width, "muted"),
+        ...this.wrap(`  ${answer ? answerText(answer) : "Not answered"}`, width),
       );
-      if (answer?.notes) lines.push(...this.wrap(`   Note: ${answer.notes}`, width, "muted"));
+      if (answer?.notes) lines.push(...this.wrap(`  ✎ ${answer.notes}`, width, "muted"));
+      lines.push("");
     });
     if (this.globalNote)
       lines.push("", ...this.wrap(`Global note: ${this.globalNote}`, width, "muted"));
@@ -356,15 +400,15 @@ export class QuestionDialog implements Component, Focusable {
       );
     if (this.warning) lines.push("", ...this.wrap(this.warning, width, "warning"));
     lines.push("");
-    this.selectedLine = lines.length + this.reviewRow;
-    lines.push(
-      ...["Submit answers", "Cancel questionnaire"].map((label, index) =>
-        this.options.theme.fg(
-          index === this.reviewRow ? "accent" : "text",
-          `${index === this.reviewRow ? ">" : " "} ${label}`,
+    ["Submit answers", "Cancel questionnaire"].forEach((label, index) => {
+      const active = index === this.reviewRow;
+      if (active) this.selectedLine = lines.length;
+      lines.push(
+        ...this.wrap(`${active ? "›" : " "} ${label}`, width, active ? "accent" : "muted").map(
+          (line) => this.highlight(line, width, active),
         ),
-      ),
-    );
+      );
+    });
     return lines;
   }
 
@@ -380,43 +424,125 @@ export class QuestionDialog implements Component, Focusable {
     return this.isReview ? this.reviewBody(width) : this.questionBody(width);
   }
 
-  private renderTabs(width: number): string {
+  private renderNavigation(width: number): string[] {
     const { theme } = this.options;
-    const titles = this.questions.map((question, index) => {
-      const draft = this.drafts[index]!;
-      const label = `${index + 1}. ${question.header}${draft.selected.size || draft.custom ? " ✓" : ""}`;
-      return index === this.tab
-        ? theme.fg("accent", `[${stripTerminalSequences(label)}]`)
-        : theme.fg("muted", stripTerminalSequences(label));
+    const titles = this.questions.map((question) => stripTerminalSequences(question.header));
+    if (titles.length === 1) return [theme.fg("muted", truncateToWidth(titles[0]!, width, ""))];
+    titles.push("Review");
+    const titleWidths = titles.map(visibleWidth);
+    const titleWidth = titleWidths.reduce((sum, size) => sum + size, 0);
+    const gap =
+      width >= titleWidth + 2 * (titles.length - 1) ? 2 : width >= titles.length * 2 - 1 ? 1 : 0;
+    const available = width - gap * (titles.length - 1);
+    const padding = titleWidth + titles.length * 2 <= available ? 2 : 0;
+    const sizes = titleWidths.map((size) => size + padding);
+    let used = sizes.reduce((sum, size) => sum + size, 0);
+    // Short tabs keep their space; only the widest titles shrink when necessary.
+    while (used > available) {
+      const widest = sizes.indexOf(Math.max(...sizes));
+      sizes[widest]!--;
+      used--;
+    }
+    const spare = available - used;
+    const extra = Math.floor(spare / titles.length);
+    const remainder = spare % titles.length;
+    // Mouse coordinates include the frame's two-column left inset.
+    let column = 2;
+    const cells = titles.map((title, index) => {
+      const size = sizes[index]! + extra + (index < remainder ? 1 : 0);
+      this.headerTargets.push({ tab: index, start: column, end: column + size });
+      column += size + gap;
+      const compact = index === this.questions.length ? "R" : String(index + 1);
+      const label =
+        titleWidths[index]! <= size
+          ? title
+          : size < 4
+            ? compact
+            : truncateToWidth(title, size, "…");
+      const padding = size - visibleWidth(label);
+      const centered =
+        " ".repeat(Math.floor(padding / 2)) + label + " ".repeat(Math.ceil(padding / 2));
+      const active = index === this.tab;
+      return {
+        title: active ? theme.bold(theme.fg("accent", centered)) : theme.fg("muted", centered),
+        rail: theme.fg(active ? "accent" : "borderMuted", (active ? "━" : "─").repeat(size)),
+      };
     });
-    if (this.drafts.length > 1)
-      titles.push(this.isReview ? theme.fg("accent", "[Review]") : theme.fg("muted", "Review"));
-    const tabs = titles.join(" · ");
-    if (visibleWidth(tabs) <= width) return tabs;
-    // Too narrow for every title: show the position and the current title only.
-    return theme.fg(
-      "accent",
-      `${this.tab + 1}/${titles.length} · ${stripTerminalSequences(this.questions[this.tab]?.header ?? "Review")}`,
-    );
+    return [
+      cells.map((cell) => cell.title).join(" ".repeat(gap)),
+      cells.map((cell) => cell.rail).join(theme.fg("borderMuted", "─".repeat(gap))),
+    ];
   }
 
   private renderHelp(width: number): string {
+    const { theme } = this.options;
+    let hints: [string, string][];
     if (this.mode === "custom" || this.mode === "notes")
-      return `Enter save · Shift+Enter newline · Ctrl+] collapse · Esc ${this.mode === "notes" ? "save note" : "cancel"}`;
-    if (this.mode === "preview" || this.mode === "question")
-      return `↑↓ scroll ${this.mode} · Ctrl+] collapse · Esc back`;
-    if (width < 70) return "q question · Enter choose · Ctrl+] collapse · Esc cancel";
-    return `${this.drafts.length > 1 ? "Tab tabs · " : ""}↑↓ move · Enter choose · q question · n note · p preview · Ctrl+] collapse · Esc cancel`;
+      hints = [
+        ["Enter", "save"],
+        ["Esc", this.mode === "notes" ? "save note" : "cancel"],
+        ["Shift+Enter", "newline"],
+        ["Ctrl+]", "collapse"],
+      ];
+    else if (this.mode === "preview" || this.mode === "question")
+      hints = [
+        ["↑↓", "scroll"],
+        ["Esc", "back"],
+        ["Home/End", "jump"],
+        ["Ctrl+]", "collapse"],
+      ];
+    else {
+      const question = this.questions[this.tab];
+      const onAction = question && this.rows[this.tab]! > question.options.length;
+      let confirm = "choose";
+      if (this.isReview) confirm = this.reviewRow === 0 ? "submit" : "cancel";
+      else if (onAction) confirm = this.questions.length === 1 ? "submit" : "next";
+      else if (question?.multiSelect) confirm = "toggle";
+      hints = [
+        ["Enter", confirm],
+        ["↑↓", "move"],
+        ["Esc", "cancel"],
+      ];
+      if (this.drafts.length > 1) hints.push(["Tab", "next"]);
+      if (this.isReview) hints.push(["Home/End", "scroll"]);
+      if (this.preview()) hints.push(["p", "preview"]);
+      hints.push(["n", "note"], ["Ctrl+]", "collapse"]);
+      if (!this.isReview) hints.push(["q", "question"]);
+    }
+    let help = "";
+    for (const [key, label] of hints) {
+      const hint = theme.fg("accent", key) + theme.fg("dim", ` ${label}`);
+      const candidate = help ? help + theme.fg("borderMuted", " · ") + hint : hint;
+      if (visibleWidth(candidate) <= width) help = candidate;
+    }
+    return help || truncateToWidth(theme.fg("accent", "Esc"), width, "");
+  }
+
+  private border(width: number, left: string, right: string, top: boolean): string {
+    const { theme } = this.options;
+    const available = width - 4;
+    const status = visibleWidth(right) <= Math.floor(available / 2) ? right : "";
+    const title = truncateToWidth(left, available - visibleWidth(status), "");
+    const gap = width - 2 - visibleWidth(title) - visibleWidth(status);
+    return (
+      theme.fg("borderAccent", top ? "╭─" : "╰─") +
+      title +
+      theme.fg("borderMuted", "─".repeat(Math.max(0, gap - 2))) +
+      status +
+      theme.fg("borderAccent", top ? "─╮" : "─╯")
+    );
   }
 
   render(width: number): string[] {
     const { theme, tui } = this.options;
+    this.headerTargets = [];
+    this.mouseWidth = width;
     if (this.collapsed)
       return [
         theme.fg(
           "dim",
           truncateToWidth(
-            "Questions collapsed · Ctrl+] expand · Esc cancel",
+            `Questions · ${this.answeredCount}/${this.questions.length} answered · Ctrl+] expand · Esc cancel`,
             Math.max(0, width),
             "",
           ),
@@ -429,20 +555,27 @@ export class QuestionDialog implements Component, Focusable {
         truncateToWidth("Resize to answer · Ctrl+] collapse · Esc cancel", Math.max(0, width), ""),
       ];
     const inner = width - 4;
+    const navigation = this.renderNavigation(inner);
     const reading = this.mode === "preview" || this.mode === "question";
     let heading =
       !this.isReview && !reading
-        ? this.wrap(this.questions[this.tab]!.question, inner, "accent")
+        ? this.wrap(this.questions[this.tab]!.question, inner, "text").map((line) =>
+            theme.bold(line),
+          )
         : [];
-    const headingLimit = Math.min(3, height - 6);
+    const headingLimit = Math.min(3, height - navigation.length - 5);
     if (heading.length > headingLimit)
       heading = [
         ...heading.slice(0, headingLimit - 1),
         theme.fg("muted", truncateToWidth("… q to read full question", inner, "")),
       ];
-    // Borders, tabs, and help take four rows.
-    this.page = height - 4 - heading.length;
+    if (heading.length) heading.push("");
+    // Borders and help take three rows. Short content leaves more transcript visible.
     const lines = this.scroll.render(inner);
+    this.page = Math.min(
+      height - 3 - navigation.length - heading.length,
+      Math.max(1, lines.length),
+    );
     this.scroll.updateLayout(lines.length, this.page, () => tui.requestRender());
     const editing = this.mode === "custom" || this.mode === "notes";
     const focusLine = editing
@@ -465,14 +598,69 @@ export class QuestionDialog implements Component, Focusable {
         theme.fg("borderAccent", " │")
       );
     };
+    const question = this.questions[this.tab];
+    const context =
+      this.mode === "notes"
+        ? "Note · optional"
+        : this.mode === "custom"
+          ? "Custom answer"
+          : this.mode === "preview"
+            ? "Option preview"
+            : this.mode === "question"
+              ? "Full question"
+              : this.isReview
+                ? "Review before submitting"
+                : question?.multiSelect
+                  ? "Choose any that apply"
+                  : "Choose one";
+    const start = this.scroll.scrollTop;
+    const end = Math.min(lines.length, start + this.page);
+    const position =
+      lines.length > this.page
+        ? ` ${start > 0 ? "↑ " : ""}${start + 1}–${end} / ${lines.length}${end < lines.length ? " ↓" : ""} `
+        : "";
     return [
-      theme.fg("borderAccent", `┌${"─".repeat(width - 2)}┐`),
-      row(this.renderTabs(inner)),
+      this.border(
+        width,
+        theme.fg("accent", theme.bold(" Ask questions ")),
+        theme.fg("muted", ` ${this.answeredCount}/${this.questions.length} answered `),
+        true,
+      ),
+      ...navigation.map(row),
       ...heading.map(row),
       ...visible.map(row),
-      row(theme.fg("dim", this.renderHelp(width))),
-      theme.fg("borderAccent", `└${"─".repeat(width - 2)}┘`),
+      row(this.renderHelp(inner)),
+      this.border(width, theme.fg("dim", ` ${context} `), theme.fg("muted", position), false),
     ];
+  }
+
+  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+    if (
+      this.closed ||
+      this.collapsed ||
+      event.width !== this.mouseWidth ||
+      event.button !== "left" ||
+      event.shift ||
+      event.alt ||
+      event.ctrl ||
+      (event.type !== "press" && event.type !== "click") ||
+      (event.y !== 1 && event.y !== 2)
+    )
+      return undefined;
+    const target = this.headerTargets.find(
+      (header) => event.x >= header.start && event.x < header.end,
+    );
+    if (!target) return undefined;
+    // Claim the press so Pi delivers a click instead of starting transcript selection.
+    if (event.type === "press" || target.tab === this.tab) return { handled: true, focus: true };
+    // Notes use the same save-on-leave behavior as Escape in their editor.
+    if (this.mode === "notes") {
+      const editor = this.editor("notes");
+      editor.onSubmit?.(editor.getExpandedText());
+    }
+    this.switchTab(target.tab);
+    this.options.tui.requestRender();
+    return { handled: true, focus: true };
   }
 
   handleInput(data: string): void {
