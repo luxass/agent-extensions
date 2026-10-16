@@ -150,7 +150,11 @@ export class QuestionDialog implements Component, Focusable {
       }
       // Leaving a note returns to the custom editor if that row is focused.
       this.mode = mode === "notes" ? this.modeForRow(tab) : undefined;
-      if (mode === "custom") this.advance();
+      if (mode === "custom") {
+        // If we are in multi select mode, we should not advance.
+        if (!question?.multiSelect) this.advance();
+      }
+
       this.syncFocus();
       this.followSelection = true;
       tui.requestRender();
@@ -177,15 +181,16 @@ export class QuestionDialog implements Component, Focusable {
     }
     const result = collectAnswers(this.options.params, this.drafts, this.globalNote);
     if (result.answers.length) this.finish(result);
-    else this.warning = "Choose an option or write an answer.";
+    else this.warning = "Choose an option, write an answer, or add a note.";
   }
 
   private moveRow(delta: number): void {
     if (this.isReview) this.reviewRow = (this.reviewRow + delta + 2) % 2;
     else {
       const question = this.questions[this.tab]!;
-      // Options, `Type something.`, and `Next` for multi-select questions.
-      const count = question.options.length + (question.multiSelect ? 2 : 1);
+      // Options, `Type something.`, and a Next or Submit row when needed.
+      const count =
+        question.options.length + (question.multiSelect || this.questions.length === 1 ? 2 : 1);
       this.rows[this.tab] = (this.rows[this.tab]! + delta + count) % count;
       this.mode = this.modeForRow(this.tab);
       this.syncFocus();
@@ -226,7 +231,7 @@ export class QuestionDialog implements Component, Focusable {
       this.scroll.scrollToStart();
       this.syncFocus();
     } else if (row > question.options.length) {
-      // The `Next` row of a multi-select question.
+      // The Next or Submit row.
       this.advance();
     } else if (question.multiSelect) {
       if (draft.selected.has(row)) draft.selected.delete(row);
@@ -295,7 +300,13 @@ export class QuestionDialog implements Component, Focusable {
       this.mode === "custom" ? undefined : customText || "Write your own answer.",
     );
     if (this.mode === "custom") lines.push(...this.editor("custom").render(width), "");
-    if (question.multiSelect)
+    if (this.questions.length === 1 && !question.multiSelect)
+      add(
+        question.options.length + 1,
+        "Submit",
+        "Submit an answer or a note. Notes alone leave this question undecided.",
+      );
+    else if (question.multiSelect)
       add(question.options.length + 1, "Next", "Keep these choices and move to the next tab.");
     if (draft.notes) lines.push(...this.wrap(`Note: ${draft.notes}`, leftWidth, "muted"));
     if (this.warning) lines.push(...this.wrap(this.warning, leftWidth, "warning"));
