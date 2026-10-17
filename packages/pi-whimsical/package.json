@@ -26,8 +26,8 @@
     "access": "public"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings .",
-    "lint:fix": "oxlint --fix --deny-warnings .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "typecheck": "tsc -p tsconfig.json"

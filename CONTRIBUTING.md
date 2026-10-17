@@ -7,78 +7,61 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
+Agent-specific rules live in [AGENTS.md](AGENTS.md).
+
 ## Checks and fixes
 
 Run these commands from the repository root:
 
-| Command          | Purpose                                                                  |
-| ---------------- | ------------------------------------------------------------------------ |
-| `pnpm typecheck` | Check root tooling configs and every workspace package with TypeScript.  |
-| `pnpm lint`      | Run type-aware Oxlint checks. Warnings fail the command.                 |
-| `pnpm lint:fix`  | Apply safe lint fixes, then report remaining issues.                     |
-| `pnpm fmt`       | Format files and sort imports with Oxfmt.                                |
-| `pnpm fmt:check` | Check formatting without writing files.                                  |
-| `pnpm check`     | Run lint, formatting checks, typechecking, and the current test command. |
+| Command          | Purpose                                                                 |
+| ---------------- | ----------------------------------------------------------------------- |
+| `pnpm typecheck` | Check root tooling configs and every workspace package with TypeScript. |
+| `pnpm lint`      | Run type-aware Oxlint checks. Errors fail the command.                  |
+| `pnpm lint:fix`  | Apply safe lint fixes, then report remaining issues.                    |
+| `pnpm fmt`       | Format files and sort imports with Oxfmt.                               |
+| `pnpm fmt:check` | Check formatting without writing files.                                 |
+| `pnpm check`     | Run lint, formatting checks, and typechecking.                          |
 
-Every package also exposes `typecheck`, `lint`, `lint:fix`, `fmt`, and `fmt:check`. Run them inside the package or use a filter:
+CI runs the same root lint, formatting, and typecheck commands. Checks do not fix files automatically. Root lint and formatting cover the whole repository. Root typechecking checks tooling and runs `tsc` in every workspace package.
+
+Each package exposes `typecheck`, `lint`, `lint:fix`, `fmt`, and `fmt:check`. To work on one package, use a filter:
 
 ```sh
 pnpm --filter @luxass/pi-btw typecheck
 pnpm --filter @luxass/pi-voice lint
 ```
 
-CI runs the same root lint, formatting, and typecheck commands. Checks do not fix files automatically.
+There is no automated test suite. The maintainer tests extensions manually in Pi and OpenCode.
 
 ## Configuration ownership
 
 - `tsconfig.base.json` owns shared compiler settings.
 - Root `tsconfig.json` checks `*.config.ts` tooling files.
-- Each package's `tsconfig.json` extends the base and includes `src/**/*.ts` and `tests/**/*.ts`.
-- `oxlint.config.ts` owns lint rules for the whole repository, including package-local commands. Oxlint uses type information but leaves compiler diagnostics to `tsc`.
-- `oxfmt.config.ts` owns formatting and import sorting. Do not add competing formatting rules to Oxlint.
-- `pnpm-workspace.yaml` catalogs pin tool and Pi versions.
+- Each package's `tsconfig.json` extends the base and includes `src/**/*.ts`.
+- `oxlint.config.ts` owns lint rules for the whole repository, including package-local commands.
+- `oxfmt.config.ts` owns formatting and import sorting.
+- `pnpm-workspace.yaml` catalogs pin shared dependency versions.
 
-Extensions publish TypeScript source, without a build step. The shared compiler settings use `Preserve` modules and `Bundler` resolution for Pi's TypeScript loader. Node types are explicit, and the standard library targets ES2023 to include non-mutating array APIs supported by Node.js 24, without assuming a browser environment.
+Oxlint uses type information but leaves compiler diagnostics to `tsc`. Rule severity lives in `oxlint.config.ts`: `error` fails the command, `warn` reports advice, and `off` disables the rule.
 
-Keep `strict`, unchecked-index checks, override checks, and unused-code checks enabled. Unused callback parameters can use an underscore prefix. `exactOptionalPropertyTypes` is not enabled yet; adopting it needs a separate review of optional fields and dependency types.
+Packages ship TypeScript source without a build step. Shared compiler settings use `Preserve` modules, `Bundler` resolution, explicit Node types, and the ES2023 standard library.
 
-Prefer fixing a lint finding. When a suppression is necessary, keep it local and explain why. Unused lint suppressions fail checks. New safety rules should be explicit rather than enabling the entire pedantic category.
+Keep the shared compiler checks enabled. Add package-specific settings only when the host requires them. Keep lint suppressions local and explain why they are necessary. Unused suppressions fail checks.
 
 ## Adding a plugin
 
-Keep packages directly under `packages/`. Name host-specific directories `<host>-<feature>`, such as `pi-btw` or `opencode-voice`. Keep existing npm package names stable when moving directories.
+Keep packages directly under `packages/`, with names such as `pi-btw` or `opencode-voice`. Each package has its own manifest, source entry point, compiler configuration, README, and MIT license.
 
-Keep host APIs and entry points in their own packages. Add shared packages only when multiple plugins need the same code. Declare shared runtime packages as dependencies, rather than importing source from sibling directories. Shared packages must be published before or with the plugins that depend on them.
+Keep host APIs and entry points in separate packages. Pi packages declare entry points under `pi.extensions`. OpenCode packages declare their entry points through `exports`. Follow the matching sibling package and the current host API.
 
-Create a package with a `package.json`, `src/`, and this `tsconfig.json`:
+Use the shared compiler and tooling configuration. Limit published files to source and package documentation. Keep README structure consistent: a short introduction, `Install`, and `Use`.
 
-```json
-{
-  "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
-}
-```
+Add the package to the root README, register its banner in the cover generator, and add a Changeset. Shared runtime packages must be declared as dependencies and published before or with their consumers.
 
-Use the same scripts as existing packages:
+The [new-extension skill](.agents/skills/new-extension/SKILL.md) contains the detailed bootstrap procedure for either host. [AGENTS.md](AGENTS.md#new-extensions) explains how to invoke it.
 
-```json
-{
-  "scripts": {
-    "fmt": "oxfmt .",
-    "fmt:check": "oxfmt --check .",
-    "lint": "oxlint --deny-warnings .",
-    "lint:fix": "oxlint --fix --deny-warnings .",
-    "typecheck": "tsc -p tsconfig.json"
-  }
-}
-```
+## Releases
 
-Keep the published `files` list limited to source and package documentation. Tests belong in `tests/`, outside published `src/`. Declare runtime dependencies in the package manifest. Pi packages declare entry points under `pi.extensions`. OpenCode packages declare the exports required by their target OpenCode version. Keep host dependencies in the packages that need them.
+Use a Changeset to describe user-facing package changes and select the version bump. The configuration lives in `.changeset/config.json`.
 
-Extend the shared TypeScript configuration. Add package-specific compiler settings when the host requires them. Do not assume that every host uses Pi's loader or runtime.
-
-Root typechecking executes `tsc` in every workspace package directly. A missing package typecheck script cannot silently skip the package, and a missing `tsconfig.json` fails the check.
-
-## Tests
-
-Don't write tests!
+The release workflow on `main` creates or updates a version PR, then publishes packages after the version changes merge. Generated changelogs and version updates belong to that workflow. See [.github/workflows/release.yaml](.github/workflows/release.yaml) for the release jobs.

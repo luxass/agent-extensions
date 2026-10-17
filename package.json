@@ -5,13 +5,12 @@
   "type": "module",
   "scripts": {
     "covers": "tsc -p scripts/covers/tsconfig.json && node scripts/covers/.generated/generate.js",
-    "lint": "oxlint --deny-warnings .",
-    "lint:fix": "oxlint --fix --deny-warnings .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "typecheck": "tsc -p tsconfig.json && tsc -p scripts/covers/tsconfig.json --noEmit && pnpm -r --no-bail exec tsc -p tsconfig.json",
-    "test": "pnpm -r --if-present run test",
-    "check": "pnpm lint && pnpm fmt:check && pnpm typecheck && pnpm test",
+    "check": "pnpm lint && pnpm fmt:check && pnpm typecheck",
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:stage": "pnpm stage publish -r --access public --no-git-checks && changeset git-tag"
   },
