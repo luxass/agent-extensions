@@ -1,7 +1,7 @@
 import type { Theme, ToolExposure } from "@earendil-works/pi-coding-agent";
 import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
-import type { ResourceSnapshot } from "./snapshot.ts";
+import type { ResourceSnapshot } from "./resources.ts";
 
 const EXPOSURE_HELP: Record<ToolExposure, string> = {
   direct: "Declared to the model and callable from other tools while active.",
