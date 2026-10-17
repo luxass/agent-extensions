@@ -1,7 +1,7 @@
 import type { Theme, ToolExposure } from "@earendil-works/pi-coding-agent";
-import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
-import type { ResourceSnapshot } from "./snapshot.ts";
+import type { ResourceSnapshot } from "./resources.ts";
 
 const EXPOSURE_HELP: Record<ToolExposure, string> = {
   direct: "Declared to the model and callable from other tools while active.",
@@ -15,6 +15,7 @@ export function renderTools(
   tools: ResourceSnapshot["tools"],
   theme: Theme,
   width: number,
+  expanded: boolean,
 ): string[] {
   if (tools.length === 0) return [theme.fg("muted", "No tools registered.")];
 
@@ -26,12 +27,21 @@ export function renderTools(
   };
   for (const tool of tools) {
     const status = tool.active ? theme.fg("success", "● active") : theme.fg("dim", "○ inactive");
-    const title = theme.bold(theme.fg("text", tool.name));
+    const title =
+      theme.fg("accent", expanded ? "▾ " : "▸ ") + theme.bold(theme.fg("text", tool.name));
     const exposure = theme.fg("accent", "[" + tool.exposure + "]");
-    lines.push(...wrapTextWithAnsi(title + "  " + status + "  " + exposure, Math.max(1, width)));
-    row(tool.description.trim(), "muted");
-    row(EXPOSURE_HELP[tool.exposure], "dim");
-    lines.push("");
+    const metadata = status + "  " + exposure;
+    const heading = title + "  " + metadata;
+    if (visibleWidth(heading) <= width) lines.push(heading);
+    else {
+      lines.push(...wrapTextWithAnsi(title, Math.max(1, width)));
+      row(metadata, "dim");
+    }
+    if (expanded) {
+      row(tool.description.trim(), "muted");
+      row(EXPOSURE_HELP[tool.exposure], "dim");
+      lines.push("");
+    }
   }
   return lines;
 }

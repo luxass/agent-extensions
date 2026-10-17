@@ -28,6 +28,7 @@ interface HeaderOptions {
   model: Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id" | "reasoning"> | undefined;
   thinking: ReturnType<ExtensionAPI["getThinkingLevel"]>;
   thinkingKey: string;
+  resources: boolean;
 }
 
 export function renderHeader({
@@ -37,6 +38,7 @@ export function renderHeader({
   model,
   thinking,
   thinkingKey,
+  resources,
 }: HeaderOptions): string[] {
   if (width < 1) return [""];
 
@@ -66,9 +68,9 @@ export function renderHeader({
     ...(model?.reasoning && thinkingKey
       ? [`${accent(thinkingKey === "shift+tab" ? "⇧Tab" : thinkingKey)} ${muted("thinking")}`]
       : []),
-    accent("/resources"),
+    ...(resources ? [accent("/resources")] : []),
   ];
-  // Drop complete hints, not half a shortcut. Keep /resources available longest.
+  // Drop complete hints, not half a shortcut. Keep the final hint available longest.
   const hintWidth = expanded ? contentWidth - 4 : contentWidth;
   while (hints.length > 1 && visibleWidth(hints.join("   ")) > hintWidth) {
     hints.splice(hints.length - 2, 1);
@@ -113,7 +115,7 @@ export function renderHeader({
     if (visibleWidth(metadata) <= contentWidth) lines.push(metadata);
     else lines.push(modelLabel, ...(thinkingLabel ? [thinkingLabel] : []));
   }
-  if (contentWidth >= visibleWidth("/resources")) {
+  if (contentWidth >= visibleWidth(hints[hints.length - 1]!)) {
     if (boxed) lines.push("");
     lines.push(hints.join("   "));
   }
@@ -143,6 +145,7 @@ export default function (pi: ExtensionAPI) {
           model: ctx.model,
           thinking: pi.getThinkingLevel(),
           thinkingKey: keyText("app.thinking.cycle"),
+          resources: pi.getCommands().some((command) => command.name === "resources"),
         }),
       invalidate() {},
     }));
