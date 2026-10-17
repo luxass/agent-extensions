@@ -42,9 +42,10 @@ export default function (pi: ExtensionAPI) {
         );
         return;
       }
-      const resources = collectResources(pi, {
-        ctx,
+      const resources = collectResources({
+        pi,
         loader: resourceLoader,
+        cwd: ctx.cwd,
       });
 
       await ctx.ui.custom<void>(
