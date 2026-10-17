@@ -154,21 +154,14 @@ export async function showResources(
           const row = (text = "") => border("│ ") + fit(text, inner) + border(" │");
           const current = RESOURCE_TABS[tab]!;
           const active = resources.tools.filter((tool) => tool.active).length;
-          const summary =
-            current === "Tools"
-              ? active +
-                " active · " +
-                (resources.tools.length - active) +
-                " inactive · Registered exposure is shown. Per-request tool hiding is not."
-              : current === "Context"
-                ? "Loaded instruction files and system-prompt sources, in Pi’s loading order."
-                : current === "Skills"
-                  ? "Run a skill with /skill:<name>."
-                  : current === "Extensions"
-                    ? "Loaded extensions by source. Press e to " +
-                      (extensionDetails ? "hide" : "show") +
-                      " full paths and package entries."
-                    : "Loader errors, warnings, and name collisions across extensions, skills, prompts, and themes.";
+          const summary = {
+            Tools: `${active} active · ${resources.tools.length - active} inactive · Registered exposure is shown. Per-request tool hiding is not.`,
+            Context: "Loaded instruction files and system-prompt sources, in Pi’s loading order.",
+            Skills: "Run a skill with /skill:<name>.",
+            Extensions: `Loaded extensions by source. Press e to ${extensionDetails ? "hide" : "show"} full paths and package entries.`,
+            Diagnostics:
+              "Loader errors, warnings, and name collisions across extensions, skills, prompts, and themes.",
+          }[current];
           const wrapped = wrapTextWithAnsi(summary, inner);
           const heading = wrapped
             .slice(0, 2)

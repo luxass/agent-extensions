@@ -5,11 +5,10 @@ import { captureResourceLoader } from "./loader-hook.ts";
 import { collectResources } from "./snapshot.ts";
 
 export default function (pi: ExtensionAPI) {
-  const command = "resources";
-  const loader = captureResourceLoader(command);
+  const loader = captureResourceLoader("resources");
   pi.on("session_shutdown", () => loader.dispose());
 
-  pi.registerCommand(command, {
+  pi.registerCommand("resources", {
     description: "Browse resources and registered tools in a tabbed dialog",
     handler: async (_args, ctx) => {
       if (ctx.mode !== "tui") return;
@@ -21,8 +20,7 @@ export default function (pi: ExtensionAPI) {
         );
         return;
       }
-      const resources = collectResources(pi, ctx, resourceLoader);
-      await showResources(ctx, resources);
+      await showResources(ctx, collectResources(pi, ctx, resourceLoader));
     },
   });
 }

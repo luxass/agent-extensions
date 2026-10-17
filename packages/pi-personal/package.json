@@ -43,7 +43,6 @@
       "./src/package-manager-interceptor.ts",
       "./src/worker-configuration-guard.ts",
       "./src/custom-header.ts",
-      "./src/resources/index.ts",
       "./src/crow/index.ts"
     ]
   }

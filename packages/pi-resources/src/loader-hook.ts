@@ -2,7 +2,7 @@ import type { LoadExtensionsResult, ResourceLoader } from "@earendil-works/pi-co
 import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 
 export function captureResourceLoader(command: string) {
-  let readLoader: (() => ResourceLoader) | undefined;
+  let loader: ResourceLoader | undefined;
   const prototype = DefaultResourceLoader.prototype;
   // oxlint-disable-next-line typescript/unbound-method -- The interceptor supplies the original receiver with call(this).
   const original = prototype.getExtensions;
@@ -14,7 +14,8 @@ export function captureResourceLoader(command: string) {
   function intercept(this: DefaultResourceLoader): LoadExtensionsResult {
     const result = original.call(this);
     if (result.extensions.some((extension) => extension.commands.has(command))) {
-      readLoader = () => this;
+      // oxlint-disable-next-line typescript/no-this-alias -- Capture the actual loader receiver for later resource reads.
+      loader = this;
       restore();
     }
     return result;
@@ -25,7 +26,7 @@ export function captureResourceLoader(command: string) {
   prototype.getExtensions = intercept;
 
   return {
-    read: () => readLoader?.(),
+    read: () => loader,
     dispose: restore,
   };
 }

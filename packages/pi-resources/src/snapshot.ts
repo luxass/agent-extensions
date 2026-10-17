@@ -25,7 +25,7 @@ function diagnosticsFor(
   resource: LoaderDiagnostic["resource"],
   diagnostics: ResourceDiagnostic[],
 ): LoaderDiagnostic[] {
-  return diagnostics.map((diagnostic) => Object.assign({}, diagnostic, { resource }));
+  return diagnostics.map((diagnostic) => ({ ...diagnostic, resource }));
 }
 
 export function collectResources(
@@ -33,7 +33,6 @@ export function collectResources(
   ctx: ExtensionContext,
   loader: ResourceLoader,
 ): ResourceSnapshot {
-  const tools = pi.getAllTools();
   const activeTools = new Set(pi.getActiveTools());
   const extensions = loader.getExtensions();
   const skills = loader.getSkills();
@@ -45,7 +44,8 @@ export function collectResources(
   ];
 
   return {
-    tools: tools
+    tools: pi
+      .getAllTools()
       .map(({ name, description, exposure }) => ({
         name,
         description,
