@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-resources",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Browse Pi's loaded resources, registered tools, and loader diagnostics.",
   "keywords": [
     "pi",

@@ -1,5 +1,11 @@
 # @luxass/pi-questions
 
+## 0.1.1
+
+### Patch Changes
+
+- [`17f301b`](https://github.com/luxass/agent-extensions/commit/17f301bce7c31f2b1799856d8d63bd84b0112e1d) Thanks [@luxass](https://github.com/luxass)! - Notify Herdr's Pi integration while a questionnaire waits for answers. Clear the questionnaire's blocked state on submission, cancellation, abort, or error.
+
 ## 0.1.0
 
 ### Minor Changes
