@@ -20,6 +20,7 @@ const TOOL_NAME = "ask_questions";
 let inlineInUse = false;
 
 async function showQuestions(
+  pi: ExtensionAPI,
   params: Questions,
   ctx: ExtensionContext,
   signal?: AbortSignal,
@@ -58,6 +59,8 @@ async function showQuestions(
   let ownsInlineSlot = !inlineInUse;
   if (ownsInlineSlot) inlineInUse = true;
   try {
+    // Herdr's optional Pi integration owns state reporting and counts overlapping blockers.
+    pi.events.emit("herdr:blocked", { active: true, label: "Waiting for answers" });
     if (ownsInlineSlot) {
       const result = await mount(false);
       if (result) return result;
@@ -69,6 +72,7 @@ async function showQuestions(
   } finally {
     if (ownsInlineSlot) inlineInUse = false;
     signal?.removeEventListener("abort", abort);
+    pi.events.emit("herdr:blocked", { active: false });
   }
 }
 export default function askQuestions(pi: ExtensionAPI) {
@@ -97,7 +101,7 @@ export default function askQuestions(pi: ExtensionAPI) {
       openWorldHint: false,
     },
     async execute(_id, params, signal, _update, ctx) {
-      const result = await showQuestions(params, ctx, signal);
+      const result = await showQuestions(pi, params, ctx, signal);
       const prefix =
         result.message ??
         (result.cancelled

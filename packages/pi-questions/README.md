@@ -10,6 +10,8 @@ pi install npm:@luxass/pi-questions
 
 Requires interactive Pi. RPC, JSON, and print modes are not supported. There are no commands or configuration files.
 
+With Herdr's Pi integration installed and loaded, Herdr marks the agent as blocked while a questionnaire is open. Submission, cancellation, an abort, or an error clears this questionnaire's blocked state. Without the integration, questionnaires work as usual.
+
 ## Use
 
 The model can use `ask_questions` without an explicit request. Its instructions tell it to clarify unclear goals, scope, and constraints before implementing a new system or substantial feature. It skips questions you already answered and routine implementation details. You can also ask it to use the tool explicitly.
