@@ -1,5 +1,11 @@
 # @luxass/opencode-personal
 
+## 0.2.1
+
+### Patch Changes
+
+- [#14](https://github.com/luxass/agent-extensions/pull/14) [`5afe207`](https://github.com/luxass/agent-extensions/commit/5afe207807f34b244f726264d870bfd01e8f697c) Thanks [@luxass](https://github.com/luxass)! - Add a model instruction that requires explicit user approval before adding, replacing, or upgrading dependencies. Keep routine installs of existing dependencies allowed through Socket Firewall.
+
 ## 0.2.0
 
 ### Minor Changes

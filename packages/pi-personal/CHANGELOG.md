@@ -1,5 +1,15 @@
 # @luxass/pi-personal
 
+## 0.1.3
+
+### Patch Changes
+
+- [#14](https://github.com/luxass/agent-extensions/pull/14) [`5afe207`](https://github.com/luxass/agent-extensions/commit/5afe207807f34b244f726264d870bfd01e8f697c) Thanks [@luxass](https://github.com/luxass)! - Add a model instruction that requires explicit user approval before adding, replacing, or upgrading dependencies. Keep routine installs of existing dependencies allowed through Socket Firewall.
+
+- [#20](https://github.com/luxass/agent-extensions/pull/20) [`38196c2`](https://github.com/luxass/agent-extensions/commit/38196c2c143cb80f17a94b5643f33cb2ac86d9f2) Thanks [@luxass](https://github.com/luxass)! - Extract `/resources` from the custom header into its own extension within the personal package. Show all registered tools with descriptions and active status in a scrollable view.
+
+- [#20](https://github.com/luxass/agent-extensions/pull/20) [`aaa4351`](https://github.com/luxass/agent-extensions/commit/aaa435126b4a463156299d9cbee0451fc49df548) Thanks [@luxass](https://github.com/luxass)! - Redesign `/resources` with Tools, Context, Skills, Extensions, and Diagnostics tabs. Open on Tools and support keyboard navigation, clickable tabs, mouse-wheel scrolling in fullscreen mode, and scroll position indicators. Show skills in compact columns and group extensions into Local, Packages, and Built-in sections using Pi’s source metadata. Show compact extension labels and collapsed packages by default. Add an `e` toggle for full source details and package entry paths, while keeping matching labels distinguishable. Replace the sibling-file scan and command/tool inference with a temporary resource-loader hook that reads loaded context files, skills, and extensions, including event-only extensions. Remove the manual context-file directory scan. Show registered tool exposure, preserve package source identity, format configured keys as readable hints, honor configured confirm/cancel keys, and display loader errors and warnings. Limit the dialog size on large terminals.
+
 ## 0.1.2
 
 ### Patch Changes
