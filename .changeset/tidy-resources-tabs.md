@@ -1,0 +1,5 @@
+---
+"@luxass/pi-personal": patch
+---
+
+Redesign `/resources` with Tools, Context, Skills, Extensions, and Diagnostics tabs. Open on Tools and support keyboard navigation, clickable tabs, mouse-wheel scrolling in fullscreen mode, and scroll position indicators. Show skills in compact columns and group extensions into Local, Packages, and Built-in sections using Pi’s source metadata. Show compact extension labels and collapsed packages by default. Add an `e` toggle for full source details and package entry paths, while keeping matching labels distinguishable. Replace the sibling-file scan and command/tool inference with a temporary resource-loader hook that reads loaded context files, skills, and extensions, including event-only extensions. Remove the manual context-file directory scan. Show registered tool exposure, preserve package source identity, format configured keys as readable hints, honor configured confirm/cancel keys, and display loader errors and warnings. Limit the dialog size on large terminals.
