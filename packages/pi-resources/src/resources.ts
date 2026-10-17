@@ -28,10 +28,14 @@ function diagnosticsFor(
   return diagnostics.map((diagnostic) => ({ ...diagnostic, resource }));
 }
 
+interface CollectResourceOptions {
+  ctx: ExtensionContext;
+  loader: ResourceLoader;
+}
+
 export function collectResources(
   pi: ExtensionAPI,
-  ctx: ExtensionContext,
-  loader: ResourceLoader,
+  { ctx, loader }: CollectResourceOptions,
 ): ResourceSnapshot {
   const activeTools = new Set(pi.getActiveTools());
   const extensions = loader.getExtensions();
