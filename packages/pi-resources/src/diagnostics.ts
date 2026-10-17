@@ -16,7 +16,9 @@ export function renderDiagnostics(
       lines.push(" ".repeat(indent) + theme.fg(color, line));
     }
   };
-  for (const diagnostic of diagnostics) {
+  for (const [index, diagnostic] of diagnostics.entries()) {
+    // One blank line between entries, never after the last.
+    if (index > 0) lines.push("");
     row(
       diagnostic.resource + " · " + diagnostic.type,
       diagnostic.type === "error" ? "error" : "warning",
@@ -28,7 +30,6 @@ export function renderDiagnostics(
       row("Used: " + diagnostic.collision.winnerPath, "dim", 2);
       row("Ignored: " + diagnostic.collision.loserPath, "dim", 2);
     }
-    lines.push("");
   }
   return lines;
 }
