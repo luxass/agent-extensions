@@ -1,6 +1,6 @@
 {
   "name": "@luxass/herdr-agent-shared",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Shared display-only Herdr blocked labels for agent extensions.",
   "keywords": [
     "agent",

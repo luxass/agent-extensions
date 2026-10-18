@@ -1,5 +1,13 @@
 # @luxass/pi-questions
 
+## 0.1.2
+
+### Patch Changes
+
+- [#25](https://github.com/luxass/agent-extensions/pull/25) [`ec79f39`](https://github.com/luxass/agent-extensions/commit/ec79f39c1084c1b6ae290a3fe45f0018ab67026c) Thanks [@luxass](https://github.com/luxass)! - Show `Waiting for answers` in Herdr's agent sidebar while a questionnaire is open. Use the shared label reporter and clear labels when questions close or Pi shuts down.
+- Updated dependencies [[`52e4a5c`](https://github.com/luxass/agent-extensions/commit/52e4a5cc5926a123c89267909b070fd73fff6452)]:
+  - @luxass/herdr-agent-shared@0.1.0
+
 ## 0.1.1
 
 ### Patch Changes
