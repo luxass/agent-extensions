@@ -16,4 +16,6 @@ The `/resources` dialog now lives in [`@luxass/pi-resources`](../pi-resources/RE
 
 The dependency policy tells the model to reuse existing code, installed dependencies, and platform APIs first. It requires explicit user approval before adding, replacing, or upgrading dependencies. Routine installs of existing dependencies remain allowed through Socket Firewall. This is a model instruction, not an enforced approval gate.
 
+The Git interceptor preserves your commit signing settings for commits and rebases. It blocks common signing bypasses, including `--no-gpg-sign`, false values for `commit.gpgsign`, removal of that setting, and indexed Git configuration environment overrides. It also tells the model to stop and ask for help if signing fails. It does not enable signing where you disabled it. These shell checks are safeguards for common commands, not a complete security boundary.
+
 The package also includes Crow provider support, compaction continuation, Git and package-manager interceptors, and a worker configuration guard. These defaults suit one workflow and are meant to be edited in place rather than configured through settings.

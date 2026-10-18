@@ -20,6 +20,8 @@ Crow connects OpenCode to CLIProxyAPI (CPA). It discovers models and their metad
 
 The Git interceptor sets `GIT_EDITOR=true`, `GIT_SEQUENCE_EDITOR=true`, and `GIT_MERGE_AUTOEDIT=no` for shell invocations. It denies shell permission requests that contain `--no-verify`.
 
+The Git interceptor preserves your commit signing settings for commits and rebases. It blocks common signing bypasses, including `--no-gpg-sign`, false values for `commit.gpgsign`, removal of that setting, and indexed Git configuration environment overrides. It also tells the model to stop and ask for help if signing fails. It does not enable signing where you disabled it. These shell checks are safeguards for common commands, not a complete security boundary.
+
 The dependency policy tells the model to reuse existing code, installed dependencies, and platform APIs first. It requires explicit user approval before adding, replacing, or upgrading dependencies. Routine installs of existing dependencies remain allowed through Socket Firewall. This is a model instruction, not an enforced approval gate.
 
 The package-manager interceptor requires Socket Firewall for common install and execution commands from pnpm, npm, Bun, Yarn, and npx. Retry an unwrapped command with `sfw` before the package manager, such as `sfw pnpm install`. The interceptor denies the command without rewriting it.
