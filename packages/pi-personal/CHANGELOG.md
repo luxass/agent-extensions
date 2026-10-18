@@ -1,5 +1,13 @@
 # @luxass/pi-personal
 
+## 0.2.1
+
+### Patch Changes
+
+- [`34b2b94`](https://github.com/luxass/agent-extensions/commit/34b2b942d28bd14524d83b0cfb1fafc6276da5c2) Thanks [@luxass](https://github.com/luxass)! - Show the remaining cooldown duration and absolute UTC retry time in Crow errors when CLIProxyAPI provides reset_seconds. Keep the original proxy error and label the timing as the next allowed retry, not a guaranteed quota reset.
+
+- [`45f758f`](https://github.com/luxass/agent-extensions/commit/45f758f0b2599b33fecdc2742b9ac63a25e35375) Thanks [@luxass](https://github.com/luxass)! - Preserve CLIProxyAPI error messages in Crow instead of replacing rate-limit errors with a ChatGPT plan warning. When the proxy provides no message, show a neutral rate-limit or quota error.
+
 ## 0.2.0
 
 ### Minor Changes
