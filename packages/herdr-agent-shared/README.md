@@ -7,7 +7,7 @@ Share Herdr blocked sidebar labels between agent extensions. This library has no
 Add the library as a runtime dependency of the extension that uses it:
 
 ```sh
-sfw pnpm add @luxass/herdr-agent-shared
+pnpm add @luxass/herdr-agent-shared
 ```
 
 Do not add it to Pi's extension list or OpenCode's plugin list. It ships TypeScript source for hosts with TypeScript loaders and requires Node.js 24 or later, or a compatible Bun runtime.
