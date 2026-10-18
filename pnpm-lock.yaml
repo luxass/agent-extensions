@@ -279,6 +279,8 @@ importers:
         specifier: catalog:dev
         version: 7.0.2
 
+  packages/herdr-agent-shared: {}
+
   packages/opencode-personal:
     dependencies:
       '@opencode/plugin':
