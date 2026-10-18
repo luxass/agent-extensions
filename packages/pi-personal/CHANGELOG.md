@@ -1,5 +1,11 @@
 # @luxass/pi-personal
 
+## 0.2.2
+
+### Patch Changes
+
+- [`4105517`](https://github.com/luxass/agent-extensions/commit/410551742e6828297ef5ac88d662f15c3b191acc) Thanks [@luxass](https://github.com/luxass)! - Preserve Git commit signing settings for commits and rebases. Block common signing bypasses and instruct the model to ask for help when signing fails. Leave repositories with signing disabled unchanged.
+
 ## 0.2.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-personal",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Personal Pi extensions collected in one package, tuned to a single workflow.",
   "keywords": [
     "personal",
