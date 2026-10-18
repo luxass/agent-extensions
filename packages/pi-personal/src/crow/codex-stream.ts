@@ -7,6 +7,7 @@
  * - provider id(s) are added to CODEX_TOOL_CALL_PROVIDERS for tool-call id handling
  * - model/message api id uses cliproxyapi-codex-responses
  * - rate-limit errors preserve proxy messages instead of assuming a ChatGPT plan
+ * - model cooldown errors include the retry delay and absolute UTC retry time
  *
  * The patched module is derived at runtime from the installed
  * @earendil-works/pi-ai openai-codex-responses implementation so we track
@@ -509,6 +510,32 @@ export function patchCodexSource(source: string, providerIds: string[]): string 
     "friendlyMessage = err.message || `CLIProxyAPI rate limit or quota exceeded.${when}`.trim();",
   );
   src = src.replace(/^\s*const plan = err\.plan_type \? `[^\n]+` : "";\n/m, "");
+
+  const errorMessageAssignment = "message = err.message || friendlyMessage || message;";
+  if (!src.includes(errorMessageAssignment)) {
+    throw new Error("openai-codex-responses source no longer assigns the parsed error message");
+  }
+  src = src.replace(
+    errorMessageAssignment,
+    `${errorMessageAssignment}
+            if (err.code === "model_cooldown" && typeof err.reset_seconds === "number" && Number.isFinite(err.reset_seconds) && err.reset_seconds >= 0) {
+                const seconds = Math.ceil(err.reset_seconds);
+                const retryAt = new Date(Date.now() + seconds * 1000);
+                if (Number.isFinite(retryAt.getTime())) {
+                    const hours = Math.floor(seconds / 3600);
+                    const minutes = Math.floor((seconds % 3600) / 60);
+                    const remainingSeconds = seconds % 60;
+                    const duration = [
+                        hours > 0 ? hours + "h" : "",
+                        minutes > 0 ? minutes + "m" : "",
+                        remainingSeconds > 0 || seconds === 0 ? remainingSeconds + "s" : "",
+                    ].filter(Boolean).join(" ");
+                    const utc = retryAt.toISOString().replace("T", " ").replace(/\\.\\d{3}Z$/, " UTC");
+                    message += "\\nNext retry allowed in " + duration + " (" + utc + ").";
+                    friendlyMessage = message;
+                }
+            }`,
+  );
 
   // Keep assistant message api metadata aligned with the registered custom api id.
   src = src.replaceAll(
