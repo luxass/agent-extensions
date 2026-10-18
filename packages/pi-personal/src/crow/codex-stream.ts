@@ -6,6 +6,7 @@
  * - chatgpt-account-id header is omitted when account id is unavailable
  * - provider id(s) are added to CODEX_TOOL_CALL_PROVIDERS for tool-call id handling
  * - model/message api id uses cliproxyapi-codex-responses
+ * - rate-limit errors preserve proxy messages instead of assuming a ChatGPT plan
  *
  * The patched module is derived at runtime from the installed
  * @earendil-works/pi-ai openai-codex-responses implementation so we track
@@ -495,6 +496,19 @@ export function patchCodexSource(source: string, providerIds: string[]): string 
     /const CODEX_TOOL_CALL_PROVIDERS = new Set\(\[([^\]]*)\]\);/,
     `const CODEX_TOOL_CALL_PROVIDERS = new Set([${existing}${extras ? `, ${extras}` : ""}]);`,
   );
+
+  // Crow can route non-OpenAI models. Preserve the proxy's error instead of
+  // letting the Codex transport replace every 429 with a ChatGPT-plan warning.
+  const usageLimitMessage =
+    "friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();";
+  if (!src.includes(usageLimitMessage)) {
+    throw new Error("openai-codex-responses source no longer defines the usage-limit message");
+  }
+  src = src.replace(
+    usageLimitMessage,
+    "friendlyMessage = err.message || `CLIProxyAPI rate limit or quota exceeded.${when}`.trim();",
+  );
+  src = src.replace(/^\s*const plan = err\.plan_type \? `[^\n]+` : "";\n/m, "");
 
   // Keep assistant message api metadata aligned with the registered custom api id.
   src = src.replaceAll(
