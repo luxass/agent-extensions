@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { stripTerminalSequences, Text } from "@earendil-works/pi-tui";
+import { HerdrBlockedReporter } from "@luxass/herdr-agent-shared";
 
 import { QuestionDialog } from "./dialog.ts";
 import {
@@ -21,6 +22,7 @@ let inlineInUse = false;
 
 async function showQuestions(
   pi: ExtensionAPI,
+  blocked: HerdrBlockedReporter,
   params: Questions,
   ctx: ExtensionContext,
   signal?: AbortSignal,
@@ -58,6 +60,7 @@ async function showQuestions(
     );
   let ownsInlineSlot = !inlineInUse;
   if (ownsInlineSlot) inlineInUse = true;
+  const releaseLabel = blocked.block("Waiting for answers");
   try {
     // Herdr's optional Pi integration owns state reporting and counts overlapping blockers.
     pi.events.emit("herdr:blocked", { active: true, label: "Waiting for answers" });
@@ -73,9 +76,16 @@ async function showQuestions(
     if (ownsInlineSlot) inlineInUse = false;
     signal?.removeEventListener("abort", abort);
     pi.events.emit("herdr:blocked", { active: false });
+    await releaseLabel();
   }
 }
 export default function askQuestions(pi: ExtensionAPI) {
+  const blocked = new HerdrBlockedReporter({
+    source: "pi-questions:blocked",
+    agent: "pi",
+    appliesToSource: "herdr:pi",
+  });
+  pi.on("session_shutdown", () => blocked.clear());
   pi.registerTool<typeof QuestionsSchema, QuestionResult>({
     name: TOOL_NAME,
     label: "Ask user",
@@ -101,7 +111,7 @@ export default function askQuestions(pi: ExtensionAPI) {
       openWorldHint: false,
     },
     async execute(_id, params, signal, _update, ctx) {
-      const result = await showQuestions(pi, params, ctx, signal);
+      const result = await showQuestions(pi, blocked, params, ctx, signal);
       const prefix =
         result.message ??
         (result.cancelled

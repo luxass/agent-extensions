@@ -1,0 +1,38 @@
+{
+  "name": "@luxass/herdr-agent-shared",
+  "version": "0.0.0",
+  "description": "Shared display-only Herdr blocked labels for agent extensions.",
+  "keywords": [
+    "agent",
+    "herdr",
+    "sidebar"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxass/agent-extensions",
+    "directory": "packages/herdr-agent-shared"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

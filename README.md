@@ -20,6 +20,14 @@ Extensions for [Pi](https://pi.dev) and [OpenCode](https://opencode.ai), publish
 | `@luxass/opencode-personal` | Load Git, package-manager, and generated worker-file guards. | [Personal](packages/opencode-personal/README.md) |
 | `@luxass/opencode-voice`    | Record speech and transcribe it for your prompts.            | [Voice](packages/opencode-voice/README.md)       |
 
+## Shared libraries
+
+| Package                      | What it does                                                                           | Documentation                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `@luxass/herdr-agent-shared` | Report and clear blocked sidebar labels without taking over Herdr lifecycle reporting. | [Herdr agent shared](packages/herdr-agent-shared/README.md) |
+
+These are runtime dependencies for extension authors, not separately installed Pi extensions or OpenCode plugins.
+
 ## Development
 
 Use Node.js 24 and the pnpm version pinned in `package.json`.

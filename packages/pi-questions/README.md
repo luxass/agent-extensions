@@ -10,7 +10,7 @@ pi install npm:@luxass/pi-questions
 
 Requires interactive Pi. RPC, JSON, and print modes are not supported. There are no commands or configuration files.
 
-With Herdr's Pi integration installed and loaded, Herdr marks the agent as blocked while a questionnaire is open. Submission, cancellation, an abort, or an error clears this questionnaire's blocked state. Without the integration, questionnaires work as usual.
+With Herdr's Pi integration installed and loaded, Herdr marks the agent as blocked while a questionnaire is open. The bundled `@luxass/herdr-agent-shared` library adds the sidebar label `Waiting for answers`. Include `state_text` in Herdr's agent sidebar rows to display it. No extra Pi extension is needed. Submission, cancellation, an abort, or an error clears this questionnaire's state and label. Without Herdr, questionnaires work as usual.
 
 ## Use
 
