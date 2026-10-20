@@ -16,7 +16,7 @@ With Herdr's Pi integration installed and loaded, Herdr marks the agent as block
 
 The model can use `ask_questions` without an explicit request. Its instructions tell it to clarify unclear goals, scope, and constraints before implementing a new system or substantial feature. It skips questions you already answered and routine implementation details. You can also ask it to use the tool explicitly.
 
-Each questionnaire accepts one to four questions, with two to four options per question.
+Each questionnaire accepts one to four questions, with two to six options per question.
 
 The questionnaire opens below the conversation in Pi's editor area. With one question, confirming an answer submits it directly. With multiple questions, selecting an option moves to the next tab. The final Review tab lets you submit or cancel.
 
@@ -27,7 +27,7 @@ The questionnaire opens below the conversation in Pi's editor area. With one que
 | Up / Down       | Move between choices.                                      |
 | Enter           | Choose an option, toggle a checkbox, or save custom text.  |
 | Space           | Toggle an authored checkbox in a multi-select question.    |
-| 1–4             | Choose the corresponding authored option.                  |
+| 1–6             | Choose the corresponding authored option.                  |
 | n               | Edit a question note, or a global note on the Review tab.  |
 | q / p           | Read the complete question or the focused option preview.  |
 | Ctrl+]          | Collapse or expand without losing answers or drafts.       |
@@ -43,4 +43,6 @@ Press n outside text editors to add a note. Enter or Escape saves the note. Note
 
 Cancelling discards all draft answers. The questionnaire also closes when the agent aborts its request. Unanswered questions remain undecided.
 
-In fullscreen Pi, click a question header or Review to switch tabs. Clicking another tab saves an open note and keeps custom-answer drafts. Page Up, Page Down, and the mouse wheel scroll the conversation while you answer. In regular mode, use keyboard navigation and your terminal's scrollback controls.
+In fullscreen Pi, click an option label or any line of its description to choose it or toggle its checkbox. Click `Type something.` to write a custom answer. Next, Submit, and the Review actions appear as plain clickable rows. Clicking Next or Submit saves custom text that you are still editing.
+
+Click a question header or Review to switch tabs. Clicking another tab saves an open note and keeps custom-answer drafts. Page Up, Page Down, and the mouse wheel scroll the conversation while you answer. In regular mode, use keyboard navigation and your terminal's scrollback controls.

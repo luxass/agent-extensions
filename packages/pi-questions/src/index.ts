@@ -11,7 +11,7 @@ import {
   MIN_OPTIONS,
   QuestionsSchema,
   RESERVED_LABELS_TEXT,
-  ResultSchema,
+  sanitizeQuestions,
   type QuestionResult,
   type Questions,
 } from "./questions.ts";
@@ -23,11 +23,11 @@ let inlineInUse = false;
 async function showQuestions(
   pi: ExtensionAPI,
   blocked: HerdrBlockedReporter,
-  params: Questions,
+  authored: Questions,
   ctx: ExtensionContext,
   signal?: AbortSignal,
 ): Promise<QuestionResult> {
-  const problem = findQuestionsProblem(params);
+  const problem = findQuestionsProblem(authored);
   if (problem) return cancelledResult("invalid_questions", problem);
   if (ctx.mode !== "tui")
     return cancelledResult(
@@ -35,6 +35,7 @@ async function showQuestions(
       "Questions were not shown. This tool requires interactive Pi. Ask the user in plain chat instead.",
     );
   if (signal?.aborted) return cancelledResult("aborted");
+  const params = sanitizeQuestions(authored);
   let dialog: QuestionDialog | undefined;
   const abort = () => dialog?.abort();
   signal?.addEventListener("abort", abort);
@@ -100,7 +101,6 @@ export default function askQuestions(pi: ExtensionAPI) {
       "Do not infer a choice for cancelled or unanswered questions. Notes alone do not answer a question.",
     ],
     parameters: QuestionsSchema,
-    outputSchema: ResultSchema,
     exposure: "model-only",
     // Sequential execution keeps two questionnaires from competing for input.
     executionMode: "sequential",
@@ -120,7 +120,6 @@ export default function askQuestions(pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: `${prefix}\n${JSON.stringify(result, null, 2)}` }],
         details: result,
-        structuredContent: result,
         isError: Boolean(result.error && result.error !== "aborted"),
       };
     },
@@ -155,11 +154,7 @@ export default function askQuestions(pi: ExtensionAPI) {
         : details.cancelled
           ? "Questionnaire cancelled"
           : `${count} ${count === 1 ? "answer" : "answers"} submitted${details.unanswered?.length ? ` · ${details.unanswered.length} unanswered` : ""}`;
-      return new Text(
-        theme.fg(details.cancelled ? "warning" : "success", stripTerminalSequences(label)),
-        0,
-        0,
-      );
+      return new Text(theme.fg(details.cancelled ? "warning" : "success", label), 0, 0);
     },
   });
 
