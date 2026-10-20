@@ -1,8 +1,11 @@
 import { Type } from "typebox";
 import * as Value from "typebox/value";
 
+export const DEFAULT_KEYBIND = "ctrl+shift+v";
+
 export const voiceOptionsSchema = Type.Object({
   settingsPath: Type.Optional(Type.String()),
+  keybind: Type.Optional(Type.Union([Type.Literal(false), Type.String({ minLength: 1 })])),
 });
 
 export type VoiceOptions = Type.Static<typeof voiceOptionsSchema>;
@@ -11,7 +14,7 @@ export type VoiceOptions = Type.Static<typeof voiceOptionsSchema>;
  * Validate plugin options while preserving extra keys.
  *
  * @param {unknown} options - OpenCode's plugin options.
- * @returns The optional settings-file path.
+ * @returns The validated plugin options.
  * @throws If a known option has an invalid value.
  */
 export function resolveOptions(options: unknown): VoiceOptions {

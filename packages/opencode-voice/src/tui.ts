@@ -17,7 +17,7 @@ import * as Plugin from "@opencode/plugin/tui/plugin";
 import { createDynamic, type TextProps } from "@opentui/solid";
 
 import { copyToClipboard } from "./clipboard";
-import { resolveOptions } from "./config";
+import { DEFAULT_KEYBIND, resolveOptions } from "./config";
 import { pickLocalModel, promptProfile } from "./profile";
 import { promptInputDevice, promptSetup } from "./setup";
 
@@ -61,6 +61,8 @@ export default Plugin.define({
   setup(ctx) {
     const ui = ctx.ui;
     const options = resolveOptions(ctx.options);
+    const keybind = options.keybind ?? DEFAULT_KEYBIND;
+    const shortcutLabel = keybind === false ? "the /voice command" : `${keybind} or /voice`;
     const configDir =
       process.env.OPENCODE_CONFIG_DIR ??
       join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "opencode");
@@ -131,7 +133,7 @@ export default Plugin.define({
       showStatus(ready ? "ready" : "setup");
       notify(
         ready
-          ? "Voice is ready. Press Ctrl+Shift+V or run /voice to record."
+          ? `Voice is ready. Use ${shortcutLabel} to record.`
           : `Voice profile saved. Finish these requirements before recording:\n${formatChecks(checks.filter(({ ok }) => !ok))}`,
         ready ? "info" : "warning",
       );
@@ -215,7 +217,7 @@ export default Plugin.define({
           id: "voice.record",
           title: "Voice: record/transcribe to clipboard",
           group: "Voice",
-          bind: "ctrl+shift+v",
+          bind: keybind,
           palette: true,
           run: toggle,
         },
@@ -251,7 +253,7 @@ export default Plugin.define({
                   await ui.dialog.alert({
                     title: "Voice commands",
                     message: [
-                      "/voice or Ctrl+Shift+V: start or stop recording",
+                      `Use ${shortcutLabel} to start or stop recording`,
                       "",
                       ...SUBCOMMANDS.map(
                         ({ value, description }) => `/voice ${value}: ${description}`,
