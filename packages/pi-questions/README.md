@@ -43,4 +43,6 @@ Press n outside text editors to add a note. Enter or Escape saves the note. Note
 
 Cancelling discards all draft answers. The questionnaire also closes when the agent aborts its request. Unanswered questions remain undecided.
 
-In fullscreen Pi, click a question header or Review to switch tabs. Clicking another tab saves an open note and keeps custom-answer drafts. Page Up, Page Down, and the mouse wheel scroll the conversation while you answer. In regular mode, use keyboard navigation and your terminal's scrollback controls.
+In fullscreen Pi, click an option label or any line of its description to choose it or toggle its checkbox. Click `Type something.` to write a custom answer. Next, Submit, and the Review actions appear as plain clickable rows. Clicking Next or Submit saves custom text that you are still editing.
+
+Click a question header or Review to switch tabs. Clicking another tab saves an open note and keeps custom-answer drafts. Page Up, Page Down, and the mouse wheel scroll the conversation while you answer. In regular mode, use keyboard navigation and your terminal's scrollback controls.

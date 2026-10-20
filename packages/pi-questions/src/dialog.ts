@@ -1,13 +1,18 @@
 import { getMarkdownTheme, type Theme } from "@earendil-works/pi-coding-agent";
 import {
+  Box,
+  Container,
   CURSOR_MARKER,
   Editor,
+  HStack,
   isKeyRelease,
   isKeyRepeat,
   Markdown,
   matchesKey,
-  ScrollView,
+  MouseRegion,
+  Spacer,
   stripTerminalSequences,
+  Text,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
@@ -27,6 +32,7 @@ import {
   type QuestionResult,
   type Questions,
 } from "./questions.ts";
+import { Viewport } from "./viewport.ts";
 
 interface DialogOptions {
   params: Questions;
@@ -47,6 +53,64 @@ interface Keys {
   newLine: boolean;
 }
 
+interface ButtonOptions {
+  theme: Theme;
+  label: string;
+  description?: string;
+  active: boolean;
+  onActivate: () => void;
+}
+
+/** A whole-row button. Keyboard selection remains owned by the containing dialog. */
+class Button extends MouseRegion {
+  constructor({ theme, label, description, active, onActivate }: ButtonOptions) {
+    super(
+      {
+        render(width) {
+          const content = new Box(
+            0,
+            0,
+            active ? (text) => theme.bg("selectedBg", text) : undefined,
+          );
+          const title = `${active ? "›" : " "} ${label}`;
+          const styled = theme.fg(active ? "accent" : "text", stripTerminalSequences(title));
+          content.addChild(new Text(active ? theme.bold(styled) : styled, 0, 0));
+          if (description) {
+            const indent = Math.min(7, Math.max(0, width - 1));
+            content.addChild({
+              render: () =>
+                wrapTextWithAnsi(
+                  theme.fg("muted", stripTerminalSequences(description)),
+                  width - indent,
+                ).map((line) => " ".repeat(indent) + line),
+              invalidate() {},
+            });
+          }
+          return content.render(width);
+        },
+        invalidate() {},
+      },
+      (event) => {
+        if (
+          event.button !== "left" ||
+          event.shift ||
+          event.alt ||
+          event.ctrl ||
+          (event.type !== "press" && event.type !== "click") ||
+          event.x < 0 ||
+          event.x >= event.width ||
+          event.y < 0 ||
+          event.y >= event.height
+        )
+          return undefined;
+        // Activating on press can reflow the choices before the click arrives.
+        if (event.type === "click") onActivate();
+        return { handled: true, focus: true };
+      },
+    );
+  }
+}
+
 export class QuestionDialog implements Component, Focusable {
   private readonly options: DialogOptions;
   private readonly questions: Questions["questions"];
@@ -54,7 +118,8 @@ export class QuestionDialog implements Component, Focusable {
   private readonly rows: number[];
   private readonly editors = new Map<string, Editor>();
   private readonly markdown = new Map<string, Markdown>();
-  private readonly scroll: ScrollView;
+  private readonly content = new Container();
+  private readonly scroll: Viewport;
   private tab = 0;
   private mode: Mode;
   private globalNote = "";
@@ -68,6 +133,8 @@ export class QuestionDialog implements Component, Focusable {
   private warning = "";
   private headerTargets: { tab: number; start: number; end: number }[] = [];
   private mouseWidth = 0;
+  private bodyTop = 0;
+  private bodyHeight = 0;
 
   constructor(options: DialogOptions) {
     this.options = options;
@@ -78,13 +145,7 @@ export class QuestionDialog implements Component, Focusable {
       notes: "",
     }));
     this.rows = this.questions.map(() => 0);
-    this.scroll = new ScrollView(
-      {
-        render: (width) => this.body(width),
-        invalidate: () => this.markdown.clear(),
-      },
-      { scrollbar: "hidden" },
-    );
+    this.scroll = new Viewport(this.content, () => options.tui.requestRender());
   }
 
   get focused(): boolean {
@@ -148,10 +209,7 @@ export class QuestionDialog implements Component, Focusable {
       if (mode === "notes") {
         if (draft) draft.notes = value;
         else this.globalNote = value;
-      } else if (draft) {
-        draft.custom = value;
-        if (value && !question?.multiSelect) draft.selected.clear();
-      }
+      } else this.saveCustomAnswer(tab, value);
       // Leaving a note returns to the custom editor if that row is focused.
       this.mode = mode === "notes" ? this.modeForRow(tab) : undefined;
       if (mode === "custom") {
@@ -165,6 +223,13 @@ export class QuestionDialog implements Component, Focusable {
     };
     this.editors.set(key, editor);
     return editor;
+  }
+
+  private saveCustomAnswer(tab: number, text: string): void {
+    const draft = this.drafts[tab];
+    if (!draft) return;
+    draft.custom = text.trim();
+    if (draft.custom && !this.questions[tab]?.multiSelect) draft.selected.clear();
   }
 
   private switchTab(tab: number): void {
@@ -249,6 +314,18 @@ export class QuestionDialog implements Component, Focusable {
     this.followSelection = true;
   }
 
+  private activateRow(row: number): void {
+    const question = this.questions[this.tab];
+    // Clicking Next or Submit includes custom text that is still being edited.
+    if (this.mode === "custom" && question && row > question.options.length)
+      this.saveCustomAnswer(this.tab, this.editor("custom").getExpandedText());
+    if (this.isReview) this.reviewRow = row;
+    else this.rows[this.tab] = row;
+    this.mode = undefined;
+    this.choose();
+    this.syncFocus();
+  }
+
   private preview(): string | undefined {
     return this.questions[this.tab]?.options[this.rows[this.tab] ?? 0]?.preview;
   }
@@ -261,59 +338,42 @@ export class QuestionDialog implements Component, Focusable {
     return wrapTextWithAnsi(this.options.theme.fg(color, stripTerminalSequences(text)), width);
   }
 
-  private previewLines(text: string, width: number): string[] {
+  private previewComponent(text: string): Markdown {
     let component = this.markdown.get(text);
     if (!component) {
       component = new Markdown(stripTerminalSequences(text), 0, 0, getMarkdownTheme());
       this.markdown.set(text, component);
     }
-    return component.render(width);
+    return component;
   }
 
   private get answeredCount(): number {
     return this.drafts.filter((draft) => draft.selected.size > 0 || draft.custom.trim()).length;
   }
 
-  /** Keep selection backgrounds inside the content pane, including wrapped lines. */
-  private highlight(text: string, width: number, active: boolean): string {
-    if (!active) return text;
-    const fitted = truncateToWidth(text, width, "");
-    return this.options.theme.bg(
-      "selectedBg",
-      fitted + " ".repeat(Math.max(0, width - visibleWidth(fitted))),
-    );
-  }
-
-  private questionBody(width: number): string[] {
+  private questionBody(width: number): Component {
+    const { theme } = this.options;
     const question = this.questions[this.tab]!;
     const draft = this.drafts[this.tab]!;
     const preview = this.preview();
     const sideBySide = Boolean(preview && width >= 96);
     const leftWidth = sideBySide ? Math.floor(width * 0.45) : width;
-    const lines: string[] = [];
+    const choices = new Container();
     const current = this.rows[this.tab]!;
     const add = (index: number, label: string, description?: string) => {
       const active = index === current;
-      if (active) this.selectedLine = lines.length;
-      const title = this.wrap(
-        `${active ? "›" : " "} ${label}`,
-        leftWidth,
-        active ? "accent" : "text",
+      // This measurement is only for keyboard scrolling. Containers route mouse events.
+      if (active) this.selectedLine = choices.render(leftWidth).length;
+      choices.addChild(
+        new Button({
+          theme,
+          label,
+          description,
+          active,
+          onActivate: () => this.activateRow(index),
+        }),
       );
-      lines.push(
-        ...title.map((line) =>
-          this.highlight(active ? this.options.theme.bold(line) : line, leftWidth, active),
-        ),
-      );
-      if (description) {
-        const indent = Math.min(7, Math.max(0, leftWidth - 1));
-        lines.push(
-          ...this.wrap(description, leftWidth - indent, "muted").map((line) =>
-            this.highlight(" ".repeat(indent) + line, leftWidth, active),
-          ),
-        );
-      }
-      lines.push("");
+      choices.addChild(new Spacer(1));
     };
     question.options.forEach((option, index) => {
       const checked = draft.selected.has(index);
@@ -328,7 +388,10 @@ export class QuestionDialog implements Component, Focusable {
       `${question.multiSelect ? (customText ? "■ " : "□ ") : "✎ "}Type something.`,
       this.mode === "custom" ? undefined : customText || "Write your own answer.",
     );
-    if (this.mode === "custom") lines.push(...this.editor("custom").render(width), "");
+    if (this.mode === "custom") {
+      choices.addChild(this.editor("custom"));
+      choices.addChild(new Spacer(1));
+    }
     if (this.questions.length === 1 && !question.multiSelect)
       add(
         question.options.length + 1,
@@ -337,31 +400,63 @@ export class QuestionDialog implements Component, Focusable {
       );
     else if (question.multiSelect)
       add(question.options.length + 1, "Next", "Keep these choices and move to the next tab.");
-    if (draft.notes) lines.push(...this.wrap(`✎ Note: ${draft.notes}`, leftWidth, "muted"));
-    if (this.warning) lines.push(...this.wrap(`! ${this.warning}`, leftWidth, "warning"));
-    if (!preview) return lines;
-    const previewWidth = sideBySide ? width - leftWidth - 3 : width;
-    const rendered = this.previewLines(preview, previewWidth);
-    const pane = [
-      this.options.theme.fg("accent", "Preview"),
-      ...this.wrap(question.options[current]!.label, previewWidth, "muted"),
-      this.options.theme.fg("borderMuted", "─".repeat(previewWidth)),
-      ...rendered.slice(0, 10),
-    ];
-    if (rendered.length > 10) pane.push(this.options.theme.fg("dim", "… press p to read more"));
-    if (!sideBySide) return [...lines, "", ...pane];
-    return Array.from({ length: Math.max(lines.length, pane.length) }, (_unused, index) => {
-      const left = truncateToWidth(lines[index] ?? "", leftWidth, "");
-      return (
-        left +
-        " ".repeat(Math.max(0, leftWidth - visibleWidth(left))) +
-        this.options.theme.fg("borderAccent", " │ ") +
-        (pane[index] ?? "")
+    if (draft.notes)
+      choices.addChild(
+        new Text(this.wrap(`✎ Note: ${draft.notes}`, leftWidth, "muted").join("\n"), 0, 0),
       );
-    });
+    if (this.warning)
+      choices.addChild(
+        new Text(this.wrap(`! ${this.warning}`, leftWidth, "warning").join("\n"), 0, 0),
+      );
+    if (!preview) return choices;
+    const pane: Component = {
+      render: (paneWidth) => {
+        const rendered = this.previewComponent(preview).render(paneWidth);
+        const lines = [
+          theme.fg("accent", "Preview"),
+          ...this.wrap(question.options[current]!.label, paneWidth, "muted"),
+          theme.fg("borderMuted", "─".repeat(paneWidth)),
+          ...rendered.slice(0, 10),
+        ];
+        if (rendered.length > 10) lines.push(theme.fg("dim", "… press p to read more"));
+        return lines;
+      },
+      invalidate() {},
+    };
+    if (!sideBySide) {
+      const layout = new Container();
+      layout.addChild(choices);
+      layout.addChild(new Spacer(1));
+      layout.addChild(pane);
+      return layout;
+    }
+    const previewWidth = width - leftWidth - 3;
+    const divider: Component = {
+      render: () =>
+        Array.from(
+          { length: Math.max(choices.render(leftWidth).length, pane.render(previewWidth).length) },
+          () => theme.fg("borderAccent", " │ "),
+        ),
+      invalidate() {},
+    };
+    const layout = new HStack([
+      { component: choices, basis: leftWidth, shrink: 0 },
+      { component: divider, basis: 3, shrink: 0 },
+      { component: pane, basis: previewWidth, shrink: 0 },
+    ]);
+    return {
+      render: (available) => layout.render(available),
+      // HStack's standalone handler uses vertical Container routing. Only the
+      // choices pane is interactive here, so forward it with its actual width.
+      handleMouse: (event) =>
+        event.x >= 0 && event.x < leftWidth
+          ? choices.handleMouse({ ...event, width: leftWidth })
+          : undefined,
+      invalidate: () => layout.invalidate(),
+    };
   }
 
-  private reviewBody(width: number): string[] {
+  private reviewBody(width: number): Component {
     const result = collectAnswers(this.options.params, this.drafts, this.globalNote);
     const lines = [
       this.options.theme.bold(this.options.theme.fg("accent", "Review your answers")),
@@ -400,26 +495,38 @@ export class QuestionDialog implements Component, Focusable {
       );
     if (this.warning) lines.push("", ...this.wrap(this.warning, width, "warning"));
     lines.push("");
+    const content = new Container();
+    content.addChild(new Text(lines.join("\n"), 0, 0));
     ["Submit answers", "Cancel questionnaire"].forEach((label, index) => {
       const active = index === this.reviewRow;
-      if (active) this.selectedLine = lines.length;
-      lines.push(
-        ...this.wrap(`${active ? "›" : " "} ${label}`, width, active ? "accent" : "muted").map(
-          (line) => this.highlight(line, width, active),
-        ),
+      if (active) this.selectedLine = content.render(width).length;
+      content.addChild(
+        new Button({
+          theme: this.options.theme,
+          label,
+          active,
+          onActivate: () => this.activateRow(index),
+        }),
       );
     });
-    return lines;
+    return content;
   }
 
-  private body(width: number): string[] {
+  private body(width: number): Component {
     if (this.mode === "notes") {
       const title = this.isReview ? "Global note" : "Question note";
-      return [this.options.theme.fg("accent", title), ...this.editor("notes").render(width)];
+      const content = new Container();
+      content.addChild(new Text(this.options.theme.fg("accent", title), 0, 0));
+      content.addChild(this.editor("notes"));
+      return content;
     }
-    if (this.mode === "preview") return this.previewLines(this.preview() ?? "", width);
+    if (this.mode === "preview") return this.previewComponent(this.preview() ?? "");
     if (this.mode === "question")
-      return this.wrap(this.questions[this.tab]!.question, width, "accent");
+      return new Text(
+        this.wrap(this.questions[this.tab]!.question, width, "accent").join("\n"),
+        0,
+        0,
+      );
     this.selectedLine = 0;
     return this.isReview ? this.reviewBody(width) : this.questionBody(width);
   }
@@ -537,6 +644,7 @@ export class QuestionDialog implements Component, Focusable {
     const { theme, tui } = this.options;
     this.headerTargets = [];
     this.mouseWidth = width;
+    this.bodyHeight = 0;
     if (this.collapsed)
       return [
         theme.fg(
@@ -570,25 +678,25 @@ export class QuestionDialog implements Component, Focusable {
         theme.fg("muted", truncateToWidth("… q to read full question", inner, "")),
       ];
     if (heading.length) heading.push("");
+    // Keep the component tree intact so containers can route clicks to buttons.
+    this.content.clear();
+    this.content.addChild(this.body(inner));
     // Borders and help take three rows. Short content leaves more transcript visible.
-    const lines = this.scroll.render(inner);
-    this.page = Math.min(
-      height - 3 - navigation.length - heading.length,
-      Math.max(1, lines.length),
-    );
-    this.scroll.updateLayout(lines.length, this.page, () => tui.requestRender());
+    this.scroll.maxHeight = height - 3 - navigation.length - heading.length;
     const editing = this.mode === "custom" || this.mode === "notes";
-    const focusLine = editing
-      ? lines.findIndex((line) => line.includes(CURSOR_MARKER))
-      : this.selectedLine;
-    if ((editing || this.followSelection) && !reading && focusLine >= 0) {
-      if (focusLine < this.scroll.scrollTop) this.scroll.scrollTo(focusLine);
-      else if (focusLine >= this.scroll.scrollTop + this.page)
-        this.scroll.scrollTo(focusLine - this.page + 1);
-    }
+    const following = editing || this.followSelection;
+    this.scroll.followLine = (lines) =>
+      following && !reading
+        ? editing
+          ? lines.findIndex((line) => line.includes(CURSOR_MARKER))
+          : this.selectedLine
+        : undefined;
+    const visible = this.scroll.render(inner);
+    this.page = this.scroll.viewportHeight;
+    this.bodyTop = 1 + navigation.length + heading.length;
+    this.bodyHeight = visible.length;
     this.followSelection = false;
-    const visible = lines.slice(this.scroll.scrollTop, this.scroll.scrollTop + this.page);
-    while (visible.length < this.page) visible.push("");
+    const totalLines = this.scroll.totalLines;
     const row = (text: string) => {
       const fitted = truncateToWidth(text, inner, "");
       return (
@@ -614,10 +722,10 @@ export class QuestionDialog implements Component, Focusable {
                   ? "Choose any that apply"
                   : "Choose one";
     const start = this.scroll.scrollTop;
-    const end = Math.min(lines.length, start + this.page);
+    const end = Math.min(totalLines, start + this.page);
     const position =
-      lines.length > this.page
-        ? ` ${start > 0 ? "↑ " : ""}${start + 1}–${end} / ${lines.length}${end < lines.length ? " ↓" : ""} `
+      totalLines > this.page
+        ? ` ${start > 0 ? "↑ " : ""}${start + 1}–${end} / ${totalLines}${end < totalLines ? " ↓" : ""} `
         : "";
     return [
       this.border(
@@ -643,24 +751,42 @@ export class QuestionDialog implements Component, Focusable {
       event.shift ||
       event.alt ||
       event.ctrl ||
-      (event.type !== "press" && event.type !== "click") ||
-      (event.y !== 1 && event.y !== 2)
+      (event.type !== "press" && event.type !== "click")
     )
       return undefined;
-    const target = this.headerTargets.find(
-      (header) => event.x >= header.start && event.x < header.end,
-    );
-    if (!target) return undefined;
-    // Claim the press so Pi delivers a click instead of starting transcript selection.
-    if (event.type === "press" || target.tab === this.tab) return { handled: true, focus: true };
-    // Notes use the same save-on-leave behavior as Escape in their editor.
-    if (this.mode === "notes") {
-      const editor = this.editor("notes");
-      editor.onSubmit?.(editor.getExpandedText());
+    const header =
+      event.y === 1 || event.y === 2
+        ? this.headerTargets.find((target) => event.x >= target.start && event.x < target.end)
+        : undefined;
+    if (header) {
+      if (event.type === "press" || header.tab === this.tab) return { handled: true, focus: true };
+      // Notes use the same save-on-leave behavior as Escape in their editor.
+      if (this.mode === "notes") {
+        const editor = this.editor("notes");
+        editor.onSubmit?.(editor.getExpandedText());
+      }
+      this.switchTab(header.tab);
+    } else {
+      if (
+        event.x < 2 ||
+        event.x >= event.width - 2 ||
+        event.y < this.bodyTop ||
+        event.y >= this.bodyTop + this.bodyHeight
+      )
+        return undefined;
+      const result = this.scroll.handleMouse({
+        ...event,
+        x: event.x - 2,
+        y: event.y - this.bodyTop,
+        width: event.width - 4,
+        height: this.bodyHeight,
+      });
+      if (!result) return undefined;
     }
-    this.switchTab(target.tab);
     this.options.tui.requestRender();
-    return { handled: true, focus: true };
+    // Keep focus and the press/click gesture on the dialog, not a button from a
+    // previous render. Do not reclaim focus after submission restores Pi's editor.
+    return { handled: true, focus: !this.closed };
   }
 
   handleInput(data: string): void {
