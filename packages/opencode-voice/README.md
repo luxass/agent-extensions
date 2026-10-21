@@ -14,9 +14,24 @@ Add the package to `~/.config/opencode/cli.json`:
 
 Requires microphone access. Linux also needs `libasound.so.2` and `wl-copy` on Wayland or `xclip` on X11 for clipboard delivery. Run `/voice setup` to choose a local or API transcription profile and an input device. Local transcription uses GGUF models; the model picker can download Whisper or Parakeet models. Local transcription under Bun requires Bun 1.4.0 or later. On older Bun versions, upgrade Bun or choose an API profile to record and transcribe.
 
+The recording shortcut defaults to **Ctrl+Shift+V**. To use a different binding, pass a `keybind` option:
+
+```json
+{
+  "plugins": [
+    {
+      "package": "@luxass/opencode-voice",
+      "options": { "keybind": "ctrl+alt+v" }
+    }
+  ]
+}
+```
+
+Use any OpenCode keybinding. Set `keybind` to `false` to disable the shortcut and use `/voice` only; this is useful when the terminal reserves the default for paste. The setting is read when the TUI starts, so restart OpenCode after changing it.
+
 ## Use
 
-Press **Ctrl+Shift+V** or run `/voice` to start recording. Requirements are checked before the microphone starts. If something is missing, Voice explains it and offers to open setup. Completing setup does not start recording; press the shortcut or run `/voice` again when you are ready. Press it again to stop, transcribe, and copy the result to the clipboard. Paste it into the composer yourself. The plugin does not send your message for you.
+Press the configured shortcut (**Ctrl+Shift+V** by default) or run `/voice` to start recording. Requirements are checked before the microphone starts. If something is missing, Voice explains it and offers to open setup. Completing setup does not start recording; press the shortcut or run `/voice` again when you are ready. Press it again to stop, transcribe, and copy the result to the clipboard. Paste it into the composer yourself. The plugin does not send your message for you.
 
 The footer shows a short setup or recording status on one line. Voice hides it when idle and in shell mode. Run `/voice status` for profile, model, and input details.
 
