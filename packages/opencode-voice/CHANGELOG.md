@@ -1,5 +1,15 @@
 # @luxass/opencode-voice
 
+## 0.2.0
+
+### Minor Changes
+
+- [#31](https://github.com/luxass/agent-extensions/pull/31) [`ae07cda`](https://github.com/luxass/agent-extensions/commit/ae07cdaadbd87fac59fcfc194b132d3880018d97) Thanks [@goldenmonkeyrnd](https://github.com/goldenmonkeyrnd)! - Add a `keybind` plugin option for the recording shortcut, and allow disabling it with `false`.
+
+### Patch Changes
+
+- [#32](https://github.com/luxass/agent-extensions/pull/32) [`69da11f`](https://github.com/luxass/agent-extensions/commit/69da11fb207a4d94683e4128cc09a89fac467035) Thanks [@goldenmonkeyrnd](https://github.com/goldenmonkeyrnd)! - Support OpenCode 2.1.1 by updating the OpenCode plugin and OpenTUI catalog versions, and adapting Crow to the current credential and provider settings schema.
+
 ## 0.1.2
 
 ### Patch Changes
