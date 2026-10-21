@@ -1,5 +1,13 @@
 # @luxass/pi-questions
 
+## 0.1.3
+
+### Patch Changes
+
+- [#29](https://github.com/luxass/agent-extensions/pull/29) [`42a67dd`](https://github.com/luxass/agent-extensions/commit/42a67dd429fb9a30ad8d10fcb2495b4105b01160) Thanks [@luxass](https://github.com/luxass)! - Make choices and questionnaire actions clickable in fullscreen Pi. Option labels and wrapped descriptions share one clickable area.
+
+- [#29](https://github.com/luxass/agent-extensions/pull/29) [`38880dc`](https://github.com/luxass/agent-extensions/commit/38880dc402d6c017d74d25ff800d97ac343a4968) Thanks [@luxass](https://github.com/luxass)! - Allow up to six options per question. Return every answer as `selected` labels plus optional `custom` text and notes. Single-choice questions in a multi-question form now show a Next row, and custom text counts as soon as you type it.
+
 ## 0.1.2
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @luxass/opencode-personal
 
+## 0.2.3
+
+### Patch Changes
+
+- [#32](https://github.com/luxass/agent-extensions/pull/32) [`69da11f`](https://github.com/luxass/agent-extensions/commit/69da11fb207a4d94683e4128cc09a89fac467035) Thanks [@goldenmonkeyrnd](https://github.com/goldenmonkeyrnd)! - Support OpenCode 2.1.1 by updating the OpenCode plugin and OpenTUI catalog versions, and adapting Crow to the current credential and provider settings schema.
+
 ## 0.2.2
 
 ### Patch Changes
