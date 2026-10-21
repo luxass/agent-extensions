@@ -13,6 +13,12 @@ overrides:
 
 minimumReleaseAgeExclude:
   - "@luxass/agent-voice@0.5.1"
+  - "@opencode/ai@2.1.1"
+  - "@opencode/client@2.1.1"
+  - "@opencode/plugin@2.1.1"
+  - "@opencode/protocol@2.1.1"
+  - "@opencode/schema@2.1.1"
+  - "@opencode/util@2.1.1"
 
 catalogs:
   types:
@@ -26,9 +32,9 @@ catalogs:
     "@earendil-works/pi-tui": 1.0.1
 
   opencode:
-    "@opencode/plugin": 2.0.8
-    "@opentui/solid": 0.5.12
-    effect: 4.0.0-rc.112
+    "@opencode/plugin": 2.1.1
+    "@opentui/solid": 0.6.6
+    effect: 4.0.1
 
   agent:
     "@luxass/agent-voice": 0.5.1

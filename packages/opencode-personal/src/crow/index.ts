@@ -32,8 +32,12 @@ export default Plugin.define({
       await ctx.provider.reload();
       if (credential?.type !== "key") return;
 
-      const savedURL = credential.configuration?.[BASE_URL_FIELD] as string | undefined;
-      const url = resolveBaseURL(process.env.CLIPROXYAPI_BASE_URL ?? savedURL ?? DEFAULT_BASE_URL);
+      const savedURL = credential.metadata?.[BASE_URL_FIELD];
+      const url = resolveBaseURL(
+        process.env.CLIPROXYAPI_BASE_URL ??
+          (typeof savedURL === "string" ? savedURL : undefined) ??
+          DEFAULT_BASE_URL,
+      );
       const models = await fetchModels(url, credential.key, signal, known);
       signal.throwIfAborted();
 
@@ -115,10 +119,8 @@ export default Plugin.define({
             canonical: Provider.ID.openai,
             activation: "auto",
             package: "@opencode/ai/providers/openai/responses",
-            settings: { baseURL },
+            settings: { baseURL, transport: "http", compaction: { type: "summary" } },
             body: { store: false },
-            transport: "http",
-            compaction: { mode: "local" },
           },
           models: available,
           sourceConnection: connection,
