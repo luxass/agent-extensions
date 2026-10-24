@@ -37,10 +37,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@luxass/agent-voice": "catalog:agent",
+    "@luxass/agent-voice": "catalog:voice",
     "@opencode/plugin": "catalog:opencode",
     "@opentui/solid": "catalog:opencode",
-    "typebox": "catalog:types"
+    "typebox": "catalog:schema"
   },
   "engines": {
     "node": ">=24"

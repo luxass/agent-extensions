@@ -15,21 +15,21 @@
     "release:stage": "pnpm stage publish -r --access public --no-git-checks && changeset git-tag"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "catalog:dev",
-    "@changesets/cli": "catalog:dev",
+    "@changesets/changelog-github": "catalog:release",
+    "@changesets/cli": "catalog:release",
     "@earendil-works/pi-ai": "catalog:pi",
     "@earendil-works/pi-coding-agent": "catalog:pi",
     "@earendil-works/pi-tui": "catalog:pi",
-    "@resvg/resvg-js": "catalog:dev",
+    "@resvg/resvg-js": "catalog:covers",
     "@types/node": "catalog:types",
     "@types/react": "catalog:types",
-    "oxfmt": "catalog:dev",
-    "oxlint": "catalog:dev",
-    "oxlint-tsgolint": "catalog:dev",
-    "react": "catalog:dev",
-    "satori": "catalog:dev",
-    "typebox": "catalog:types",
-    "typescript": "catalog:dev"
+    "oxfmt": "catalog:lint",
+    "oxlint": "catalog:lint",
+    "oxlint-tsgolint": "catalog:lint",
+    "react": "catalog:covers",
+    "satori": "catalog:covers",
+    "typebox": "catalog:schema",
+    "typescript": "catalog:compiler"
   },
   "packageManager": "pnpm@12.14.0"
 }

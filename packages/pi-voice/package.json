@@ -35,7 +35,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@luxass/agent-voice": "catalog:agent"
+    "@luxass/agent-voice": "catalog:voice"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
