@@ -11,6 +11,7 @@
     "fmt:check": "oxfmt --check .",
     "typecheck": "tsc -p tsconfig.json && tsc -p scripts/covers/tsconfig.json --noEmit && pnpm -r --no-bail exec tsc -p tsconfig.json",
     "check": "pnpm lint && pnpm fmt:check && pnpm typecheck",
+    "changeset": "changeset",
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:stage": "pnpm stage publish -r --access public --no-git-checks && changeset git-tag"
   },
