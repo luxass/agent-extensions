@@ -12,7 +12,6 @@ overrides:
   semver: 7.8.5
 
 minimumReleaseAgeExclude:
-  - "@luxass/agent-voice@0.5.1"
   - "@opencode/ai@2.1.1"
   - "@opencode/client@2.1.1"
   - "@opencode/plugin@2.1.1"
@@ -37,7 +36,7 @@ catalogs:
     effect: 4.0.1
 
   agent:
-    "@luxass/agent-voice": 0.5.1
+    "@luxass/agent-voice": 0.5.2
 
   dev:
     "@changesets/changelog-github": 1.0.1
