@@ -243,15 +243,6 @@ importers:
       '@changesets/cli':
         specifier: catalog:release
         version: 3.0.3
-      '@earendil-works/pi-ai':
-        specifier: catalog:pi
-        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.22.0)(zod@4.1.8)
-      '@earendil-works/pi-coding-agent':
-        specifier: catalog:pi
-        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
-      '@earendil-works/pi-tui':
-        specifier: catalog:pi
-        version: 1.4.0
       '@resvg/resvg-js':
         specifier: catalog:covers
         version: 2.6.2
@@ -310,72 +301,74 @@ importers:
         version: 1.4.2
 
   packages/pi-btw:
-    dependencies:
+    devDependencies:
       '@earendil-works/pi-ai':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.22.0)(zod@4.1.8)
       '@earendil-works/pi-coding-agent':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
       '@earendil-works/pi-tui':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0
 
   packages/pi-personal:
-    dependencies:
+    devDependencies:
       '@earendil-works/pi-ai':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.22.0)(zod@4.1.8)
       '@earendil-works/pi-coding-agent':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
       '@earendil-works/pi-tui':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0
 
   packages/pi-questions:
     dependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: '*'
-        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
-      '@earendil-works/pi-tui':
-        specifier: '*'
-        version: 1.4.0
       '@luxass/herdr-agent-shared':
         specifier: workspace:^
         version: link:../herdr-agent-shared
       typebox:
         specifier: '*'
         version: 1.4.2
-
-  packages/pi-resources:
-    dependencies:
+    devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
       '@earendil-works/pi-tui':
-        specifier: '*'
+        specifier: catalog:pi
+        version: 1.4.0
+
+  packages/pi-resources:
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: catalog:pi
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-tui':
+        specifier: catalog:pi
         version: 1.4.0
 
   packages/pi-voice:
     dependencies:
-      '@earendil-works/pi-ai':
-        specifier: '*'
-        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.22.0)(zod@4.1.8)
-      '@earendil-works/pi-coding-agent':
-        specifier: '*'
-        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
-      '@earendil-works/pi-tui':
-        specifier: '*'
-        version: 1.4.0
       '@luxass/agent-voice':
         specifier: catalog:voice
         version: 0.5.2
+    devDependencies:
+      '@earendil-works/pi-ai':
+        specifier: catalog:pi
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-coding-agent':
+        specifier: catalog:pi
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-tui':
+        specifier: catalog:pi
+        version: 1.4.0
 
   packages/pi-whimsical:
-    dependencies:
+    devDependencies:
       '@earendil-works/pi-coding-agent':
-        specifier: '*'
+        specifier: catalog:pi
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
 
 packages:

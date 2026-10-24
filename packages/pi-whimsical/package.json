@@ -32,6 +32,9 @@
     "fmt:check": "oxfmt --check .",
     "typecheck": "tsc -p tsconfig.json"
   },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:pi"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   },

@@ -17,9 +17,6 @@
   "devDependencies": {
     "@changesets/changelog-github": "catalog:release",
     "@changesets/cli": "catalog:release",
-    "@earendil-works/pi-ai": "catalog:pi",
-    "@earendil-works/pi-coding-agent": "catalog:pi",
-    "@earendil-works/pi-tui": "catalog:pi",
     "@resvg/resvg-js": "catalog:covers",
     "@types/node": "catalog:types",
     "@types/react": "catalog:types",

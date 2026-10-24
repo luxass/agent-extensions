@@ -37,6 +37,11 @@
   "dependencies": {
     "@luxass/agent-voice": "catalog:voice"
   },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "catalog:pi",
+    "@earendil-works/pi-coding-agent": "catalog:pi",
+    "@earendil-works/pi-tui": "catalog:pi"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
