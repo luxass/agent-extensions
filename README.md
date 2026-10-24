@@ -8,6 +8,7 @@ Extensions for [Pi](https://pi.dev) and [OpenCode](https://opencode.ai), publish
 | ---------------------- | --------------------------------------------------------------------------------- | -------------------------------------------- |
 | `@luxass/pi-questions` | Ask tabbed questions with choices, notes, and Markdown previews.                  | [Questions](packages/pi-questions/README.md) |
 | `@luxass/pi-btw`       | Ask side questions in a popover, then optionally send a summary to the main chat. | [btw](packages/pi-btw/README.md)             |
+| `@luxass/pi-pin`       | Pin messages and revisit them in a searchable popup.                              | [Pins](packages/pi-pin/README.md)            |
 | `@luxass/pi-personal`  | Load defaults and extensions tuned to a single personal workflow.                 | [personal](packages/pi-personal/README.md)   |
 | `@luxass/pi-resources` | Browse loaded resources, registered tools, and loader diagnostics.                | [Resources](packages/pi-resources/README.md) |
 | `@luxass/pi-voice`     | Record speech and transcribe it for your prompts.                                 | [Voice](packages/pi-voice/README.md)         |
