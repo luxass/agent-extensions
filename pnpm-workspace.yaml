@@ -35,7 +35,7 @@ catalogs:
     "@types/react": 19.3.0
 
   schema:
-    typebox: 1.4.2
+    typebox: 1.4.3
 
   pi:
     "@earendil-works/pi-ai": 1.4.0
@@ -43,9 +43,9 @@ catalogs:
     "@earendil-works/pi-tui": 1.4.0
 
   opencode:
-    "@opencode/plugin": 2.1.1
-    "@opentui/solid": 0.6.6
-    effect: 4.0.5
+    "@opencode/plugin": 2.1.4
+    "@opentui/solid": 0.6.8
+    effect: 4.0.6
 
   voice:
     "@luxass/agent-voice": 0.5.2
@@ -57,12 +57,12 @@ catalogs:
   covers:
     "@resvg/resvg-js": 2.6.2
     react: 19.3.1
-    satori: 0.62.0
+    satori: 0.63.2
 
   lint:
-    oxfmt: 0.73.0
+    oxfmt: 0.74.0
     oxlint: 1.88.0
-    oxlint-tsgolint: 7.0.2004
+    oxlint-tsgolint: 7.0.2005
 
   compiler:
     typescript: 7.0.2
