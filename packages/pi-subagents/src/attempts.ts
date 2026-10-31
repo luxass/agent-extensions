@@ -13,6 +13,8 @@ import {
   addUsage,
   createAgentTools,
   emptyUsage,
+  hasReportedUsage,
+  receivedAttempts,
   spawnParameters,
   thinkingSchema,
   usageSchema,
@@ -64,19 +66,6 @@ const savedSchema = Type.Object({
   outputFile: Type.String(),
   cleanupSafe: Type.Boolean(),
   delivery: Type.Union([Type.Literal("inline"), Type.Literal("pending"), Type.Literal("consumed")]),
-});
-
-const attemptReference = Type.Object({ attemptId: Type.String() });
-const completionReceipt = Type.Object({ agents: Type.Array(attemptReference) });
-const collectionReceipt = Type.Object({
-  attemptId: Type.String(),
-  snapshot: Type.Object({
-    state: Type.Union([
-      Type.Literal("completed"),
-      Type.Literal("failed"),
-      Type.Literal("cancelled"),
-    ]),
-  }),
 });
 
 export class Attempt {
@@ -167,6 +156,7 @@ export class Attempt {
             },
 
             event: (event) => this.project(event),
+            boundary: (state, ctx) => manager.onBoundary?.(owner, state, ctx),
 
             usage: (usage) => {
               const own = { ...usage };
@@ -491,27 +481,11 @@ async function deadline(promise: Promise<void>, milliseconds: number): Promise<v
   }
 }
 
-function receivedAttempts(manager: AgentManager): Set<string> {
-  const ids = new Set<string>();
-  for (const entry of manager.context.sessionManager.getEntries()) {
-    if (entry.type === "custom_message" && entry.customType === "subagent-completion") {
-      const details: unknown = entry.details;
-      if (Value.Check(completionReceipt, details))
-        for (const value of details.agents) ids.add(value.attemptId);
-    }
-    if (entry.type === "message" && entry.message.role === "toolResult") {
-      const details: unknown = entry.message.details;
-      if (Value.Check(collectionReceipt, details)) ids.add(details.attemptId);
-    }
-  }
-  return ids;
-}
-
 export async function restoreAttempts(manager: AgentManager): Promise<void> {
   await mkdir(join(manager.directory, "attempts"), { recursive: true, mode: 0o700 });
   const files = await readdir(join(manager.directory, "attempts"));
   const restored: Attempt[] = [];
-  const received = receivedAttempts(manager);
+  const received = receivedAttempts(manager.context);
   for (const file of files.filter((name) => /^[a-f0-9-]{36}\.json$/.test(name))) {
     try {
       const value: unknown = JSON.parse(
@@ -561,6 +535,7 @@ export async function restoreAttempts(manager: AgentManager): Promise<void> {
       });
       const attempt = new Attempt(manager, view, value.request);
       attempt.instructions = value.instructions;
+      attempt.usageReported = hasReportedUsage(manager.context, value.attemptId);
       attempt.cleanupSafe = value.cleanupSafe && state === value.state && !sessionIssue;
       attempt.publish({
         resumeBlocked: attempt.cleanupSafe

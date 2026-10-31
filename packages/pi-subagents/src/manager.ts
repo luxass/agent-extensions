@@ -3,6 +3,8 @@ import { isAbsolute, join } from "node:path";
 
 import {
   getAgentDir,
+  type BoundaryResult,
+  type BoundaryState,
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
@@ -10,10 +12,10 @@ import { Value } from "typebox/value";
 
 import { Attempt } from "./attempts.ts";
 import type { Catalog } from "./catalog.ts";
-import { record, withStateLock } from "./io.ts";
-import { childSessionContext } from "./sessions.ts";
+import { withStateLock } from "./io.ts";
 import {
   emptyUsage,
+  hasReportedUsage,
   matches,
   rejectWorktree,
   spawnParameters,
@@ -49,6 +51,11 @@ export class AgentManager implements AgentService {
   readonly attempts = new Map<string, Attempt>();
   private listeners = new Set<() => void>();
   private tasks = new Set<Promise<void>>();
+  readonly toolRoots = new Map<string, string>();
+  private usageReservations = new Map<
+    string,
+    { toolCallId: string; rootId: string; reported: boolean }
+  >();
   readonly pending = new Set<Attempt>();
   readonly active = new Set<Attempt>();
   private capacity = "";
@@ -56,6 +63,11 @@ export class AgentManager implements AgentService {
   private pumping = false;
   private changedPending = false;
   onComplete?: (view: AgentView) => void;
+  onBoundary?: (
+    owner: Owner,
+    state: BoundaryState,
+    ctx: ExtensionContext,
+  ) => BoundaryResult | undefined;
 
   constructor(
     readonly pi: ExtensionAPI,
@@ -377,28 +389,54 @@ export class AgentManager implements AgentService {
     return true;
   }
 
-  consume(id: string, attemptId: string, owner?: Owner): Usage | undefined {
+  consume(id: string, attemptId: string, owner: Owner, toolCallId: string): Usage | undefined {
     const attempt = this.entry(id, attemptId, owner);
     if (!isSettled(attempt.view.state))
       throw new Error("A running or settling attempt has no final result.");
     if (!attempt.consumed) {
+      this.pi.appendEntry("subagent-receipt", { version: 1, kind: "collection", attemptId });
       attempt.consumed = true;
       attempt.saveReceipt();
     }
-    if (attempt.usageReported || (owner && owner.id !== this.root.id)) return undefined;
-    const recorded = this.context.sessionManager.getEntries().some((entry) => {
-      if (entry.type !== "message" || entry.message.role !== "toolResult") return false;
-      const details: unknown = entry.message.details;
-      return (
-        record(details) && details.attemptId === attemptId && entry.message.usage !== undefined
-      );
-    });
-    if (recorded) {
+    if (
+      owner.id !== this.root.id ||
+      owner.attemptId ||
+      attempt.usageReported ||
+      this.usageReservations.has(attemptId)
+    )
+      return undefined;
+    if (hasReportedUsage(this.context, attemptId)) {
       attempt.usageReported = true;
       return undefined;
     }
-    attempt.usageReported = true;
+    this.usageReservations.set(attemptId, {
+      toolCallId,
+      rootId: this.toolRoots.get(toolCallId) ?? toolCallId,
+      reported: false,
+    });
     return { ...attempt.view.usage };
+  }
+
+  captureUsage(toolCallId: string): void {
+    for (const [attemptId, reservation] of this.usageReservations) {
+      if (reservation.toolCallId !== toolCallId || reservation.reported) continue;
+      this.pi.appendEntry("subagent-receipt", {
+        version: 1,
+        kind: "usage",
+        attemptId,
+        toolCallId: reservation.rootId,
+      });
+      reservation.reported = true;
+    }
+  }
+
+  commitUsage(toolCallId: string, accounted: boolean): void {
+    for (const [attemptId, reservation] of this.usageReservations) {
+      if (reservation.rootId !== toolCallId) continue;
+      const attempt = this.attempts.get(attemptId);
+      if (attempt && reservation.reported && accounted) attempt.usageReported = true;
+      this.usageReservations.delete(attemptId);
+    }
   }
 
   waiting(owner: Owner, attemptId: string, active: boolean): void {
@@ -412,23 +450,6 @@ export class AgentManager implements AgentService {
         ? `Waiting for child (${parent.waitingChildren.size})`
         : "Working",
     });
-  }
-
-  async notifyOwner(view: AgentView): Promise<void> {
-    const parent = view.owner.attemptId ? this.attempts.get(view.owner.attemptId) : undefined;
-    if (parent?.view.state !== "running" || !parent.driver || this.closing) return;
-    const session = parent.driver.session;
-    await childSessionContext.run(true, () =>
-      session.sendCustomMessage(
-        {
-          customType: "subagent-completion",
-          content: `${view.displayName} · ${view.task} · ${view.state}\n${view.result || view.error || view.activity}\nAgent: ${view.id}\nRecord: ${view.outputFile}`,
-          display: true,
-          details: { id: view.id, attemptId: view.attemptId },
-        },
-        { triggerTurn: true, deliverAs: "followUp" },
-      ),
-    );
   }
 
   delivered(attemptId: string): void {

@@ -1,15 +1,38 @@
-import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  VERSION,
+  type BoundaryResult,
+  type BoundaryState,
+  type CustomMessageEntryDraft,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
 import { restoreAttempts } from "./attempts.ts";
 import { createCatalog } from "./catalog.ts";
 import { record } from "./io.ts";
-import { AgentManager } from "./manager.ts";
+import { AgentManager, type Owner } from "./manager.ts";
 import { type AgentCard, agentRenderers, completionCards, plain } from "./render.ts";
 import { childSessionContext } from "./sessions.ts";
-import { coreAgentParameters, createAgentTools, inlineView } from "./tools.ts";
+import { coreAgentParameters, createAgentTools, inlineView, receivedAttempts } from "./tools.ts";
 import { isSettled, type AgentView } from "./transcript.ts";
 import { attachUi } from "./ui.ts";
+
+function completion(views: AgentView[]): CustomMessageEntryDraft {
+  const budget = Math.max(120, Math.floor(24000 / views.length) - 300);
+  return {
+    type: "custom_message",
+    customType: "subagent-completion",
+    display: true,
+    details: { agents: views.map(inlineView) },
+    content: views
+      .map(
+        (view) =>
+          `${view.displayName} · ${view.task} · ${view.state}\nAgent: ${view.id}\nAttempt: ${view.attemptId}\nRecord: ${view.outputFile}\n${(view.error ? `${view.error}\n` : "") + (view.result || view.activity).slice(0, budget)}`,
+      )
+      .join("\n\n"),
+  };
+}
 
 export default function subagents(pi: ExtensionAPI): void {
   if (childSessionContext.getStore()) return;
@@ -20,8 +43,8 @@ export default function subagents(pi: ExtensionAPI): void {
   let epoch = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let groupDeadline: number | undefined;
-  let flushing: Promise<void> | undefined;
   const outbox = new Map<string, AgentView>();
+  const inFlight = new Set<string>();
   const cards = new Set<AgentCard>();
 
   const warn = (error: unknown): void => {
@@ -40,83 +63,108 @@ export default function subagents(pi: ExtensionAPI): void {
     if (record(payload) && typeof payload.error === "string") warn(payload.error);
   });
 
+  function ready(owner: Owner, ctx: ExtensionContext, retry = false): AgentView[] {
+    const service = manager;
+    if (closing || !service) return [];
+    const received = receivedAttempts(ctx);
+    const views: AgentView[] = [];
+    for (const [id, view] of outbox) {
+      if (view.owner.id !== owner.id || view.owner.attemptId !== owner.attemptId) continue;
+      if (received.has(id)) service.delivered(id);
+      if (service.isConsumed(id)) {
+        outbox.delete(id);
+        inFlight.delete(id);
+        continue;
+      }
+      if (retry) inFlight.delete(id);
+      if (
+        !inFlight.has(id) &&
+        (owner.attemptId ||
+          service.deliveryMode(id) !== "group" ||
+          !service.joinedPending() ||
+          Date.now() >= (groupDeadline ?? 0))
+      )
+        views.push(view);
+    }
+    if (
+      ![...outbox.values()].some(
+        (view) => !view.owner.attemptId && service.deliveryMode(view.attemptId) === "group",
+      )
+    )
+      groupDeadline = undefined;
+    return views;
+  }
+
+  function boundary(
+    owner: Owner,
+    state: BoundaryState,
+    ctx: ExtensionContext,
+  ): BoundaryResult | undefined {
+    if (state.outcome !== "completed" || ctx.signal?.aborted) return undefined;
+    const views = ready(owner, ctx, true);
+    if (!views.length) return undefined;
+    for (const view of views) inFlight.add(view.attemptId);
+    return { entries: [...state.entries, completion(views)], continue: true };
+  }
+
+  function flushIdle(): void {
+    const service = manager;
+    if (closing || !service || !service.context.isIdle()) return;
+    const views = ready(service.root, service.context);
+    if (!views.length) return;
+    const message = completion(views);
+    for (const view of views) inFlight.add(view.attemptId);
+    try {
+      childSessionContext.exit(() => pi.sendMessage(message, { triggerTurn: true }));
+    } catch (error) {
+      for (const view of views) inFlight.delete(view.attemptId);
+      warn(error);
+    }
+  }
+
   function schedule(): void {
-    if (closing || !manager || !outbox.size) return;
     if (timer) clearTimeout(timer);
-    const individual = [...outbox.values()].some(
-      (view) => view.owner.attemptId || manager?.deliveryMode(view.attemptId) !== "group",
+    timer = undefined;
+    const service = manager;
+    if (closing || !service) return;
+    for (const [id, view] of outbox) {
+      if (
+        view.owner.attemptId &&
+        service.attempt(view.owner.id, view.owner.attemptId)?.state !== "running"
+      ) {
+        outbox.delete(id);
+        inFlight.delete(id);
+      }
+    }
+    if (!service.context.isIdle()) return;
+    const pending = [...outbox.values()].filter(
+      (view) =>
+        !view.owner.attemptId &&
+        !inFlight.has(view.attemptId) &&
+        !service.isConsumed(view.attemptId),
     );
+    if (!pending.length) return;
+    const individual = pending.some((view) => service.deliveryMode(view.attemptId) !== "group");
     const delay =
-      individual || !manager.joinedPending()
+      individual || !service.joinedPending()
         ? 50
         : Math.max(0, (groupDeadline ?? Date.now()) - Date.now());
     timer = setTimeout(() => {
       timer = undefined;
-      void flush().catch(warn);
+      try {
+        flushIdle();
+      } catch (error) {
+        warn(error);
+      }
     }, delay);
-  }
-
-  async function flush(): Promise<void> {
-    if (flushing) return flushing;
-    const service = manager;
-    if (closing || !service) return;
-    flushing = (async () => {
-      const ready: AgentView[] = [];
-      for (const [id, view] of outbox) {
-        if (service.isConsumed(id)) {
-          outbox.delete(id);
-          continue;
-        }
-        if (view.owner.attemptId) {
-          await service.notifyOwner(view);
-          service.delivered(id);
-          outbox.delete(id);
-        } else if (
-          service.deliveryMode(id) !== "group" ||
-          !service.joinedPending() ||
-          Date.now() >= (groupDeadline ?? 0)
-        )
-          ready.push(view);
-      }
-      if (ready.length) {
-        const budget = Math.max(120, Math.floor(24000 / ready.length) - 300);
-        childSessionContext.exit(() =>
-          pi.sendMessage(
-            {
-              customType: "subagent-completion",
-              display: true,
-              details: { agents: ready.map(inlineView) },
-              content: ready
-                .map(
-                  (view) =>
-                    `${view.displayName} · ${view.task} · ${view.state}\nAgent: ${view.id}\nAttempt: ${view.attemptId}\nRecord: ${view.outputFile}\n${(view.error ? `${view.error}\n` : "") + (view.result || view.activity).slice(0, budget)}`,
-                )
-                .join("\n\n"),
-            },
-            { triggerTurn: true, deliverAs: "followUp" },
-          ),
-        );
-        for (const view of ready) {
-          service.delivered(view.attemptId);
-          outbox.delete(view.attemptId);
-        }
-      }
-      if (![...outbox.values()].some((view) => service.deliveryMode(view.attemptId) === "group"))
-        groupDeadline = undefined;
-      schedule();
-    })();
-    try {
-      await flushing;
-    } finally {
-      flushing = undefined;
-    }
   }
 
   function finished(service: AgentManager, view: AgentView): void {
     if (closing || manager !== service || !view.background || service.isConsumed(view.attemptId))
       return;
     outbox.set(view.attemptId, view);
-    if (service.deliveryMode(view.attemptId) === "group") groupDeadline ??= Date.now() + 30000;
+    if (!view.owner.attemptId && service.deliveryMode(view.attemptId) === "group")
+      groupDeadline ??= Date.now() + 30000;
     schedule();
   }
 
@@ -141,6 +189,8 @@ export default function subagents(pi: ExtensionAPI): void {
       }
       manager = created;
       created.onComplete = (view) => finished(created, view);
+      created.onBoundary = (owner, state, context) =>
+        manager === created ? boundary(owner, state, context) : undefined;
       disposeUi = attachUi(pi, created);
       if (catalog.warnings.length && ctx.hasUI)
         ctx.ui.notify(`Subagent catalog:\n${catalog.warnings.join("\n")}`, "warning");
@@ -176,32 +226,71 @@ export default function subagents(pi: ExtensionAPI): void {
     closing = false;
     await getManager(ctx);
   });
-  pi.on("turn_end", async () => {
-    if (outbox.size) await flush().catch(warn);
+  pi.on("tool_execution_start", (event) => {
+    manager?.toolRoots.set(
+      event.toolCallId,
+      event.parentToolCallId
+        ? (manager.toolRoots.get(event.parentToolCallId) ?? event.parentToolCallId)
+        : event.toolCallId,
+    );
   });
-  pi.on("agent_before_settle", async (_event, ctx) => {
+  pi.on("tool_execution_end", (event) => {
+    manager?.toolRoots.delete(event.toolCallId);
+  });
+  pi.on("tool_result", (event) => {
+    if (event.usage !== undefined) manager?.captureUsage(event.toolCallId);
+  });
+  pi.on("message_end", (event) => {
+    if (event.message.role === "toolResult")
+      manager?.commitUsage(event.message.toolCallId, event.message.usage !== undefined);
+  });
+  pi.on("turn_start", (_event, ctx) => {
+    if (manager) ready(manager.root, ctx);
+  });
+  pi.on("turn_end", (state, ctx) => (manager ? boundary(manager.root, state, ctx) : undefined));
+  pi.on("agent_settled", () => {
+    schedule();
+  });
+  pi.on("session_compact", () => {
+    if (closing) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      try {
+        schedule();
+      } catch (error) {
+        warn(error);
+      }
+    }, 0);
+  });
+  pi.on("session_compact_failed", () => {
+    schedule();
+  });
+  pi.on("agent_before_settle", async (state, ctx) => {
     const service = manager;
-    if ((ctx.mode !== "print" && ctx.mode !== "json") || !service || closing) return undefined;
-    const pending = service
-      .list()
-      .filter((view) => view.owner.id === service.root.id && !isSettled(view.state));
-
-    const abort = (): void => {
-      for (const view of pending) void service.stop(view.id, undefined, view.attemptId).catch(warn);
-    };
-
-    ctx.signal?.addEventListener("abort", abort, { once: true });
-    try {
-      if (ctx.signal?.aborted) abort();
-      await Promise.all(pending.map((view) => service.wait(view.id, view.attemptId)));
-    } finally {
-      ctx.signal?.removeEventListener("abort", abort);
-    }
-    if (outbox.size) {
+    if (!service || closing) return undefined;
+    if (ctx.mode === "print" || ctx.mode === "json") {
+      const pending = service
+        .list()
+        .filter((view) => view.owner.id === service.root.id && !isSettled(view.state));
+      const abort = (): void => {
+        for (const view of pending)
+          void service.stop(view.id, undefined, view.attemptId).catch(warn);
+      };
+      ctx.signal?.addEventListener("abort", abort, { once: true });
+      try {
+        if (ctx.signal?.aborted) abort();
+        await Promise.all(pending.map((view) => service.wait(view.id, view.attemptId)));
+      } finally {
+        ctx.signal?.removeEventListener("abort", abort);
+      }
       groupDeadline = 0;
-      await flush().catch(warn);
     }
-    return ctx.hasPendingMessages() ? { continue: true } : undefined;
+    if (ctx.signal?.aborted || state.outcome !== "completed") return undefined;
+    return (
+      boundary(service.root, state, ctx) ??
+      (ctx.hasPendingMessages() ? { continue: true } : undefined)
+    );
   });
   pi.on("session_shutdown", async () => {
     closing = true;
@@ -210,6 +299,7 @@ export default function subagents(pi: ExtensionAPI): void {
     timer = undefined;
     groupDeadline = undefined;
     outbox.clear();
+    inFlight.clear();
     disposeUi?.();
     disposeUi = undefined;
     for (const card of cards) card.dispose();
@@ -217,7 +307,6 @@ export default function subagents(pi: ExtensionAPI): void {
     offWarnings();
     await manager?.dispose();
     await startup?.catch(() => undefined);
-    await flushing?.catch(() => undefined);
     manager = undefined;
     startup = undefined;
   });

@@ -10,6 +10,13 @@ Run root `pnpm lint`, `pnpm fmt:check`, and `pnpm typecheck` after local changes
 - Created and saved a project agent definition through the supervisor UI.
 - Reloaded Pi, then edited and saved definitions under `~/.pi/agent/agents`, `~/.agents/agents`, `.pi/agents`, and `.agents/agents`.
 - Confirmed each save notification and checked the changed file at its original path. Removed the demo definitions afterward.
+- Collected a completed background result through codemode while the main script was still busy. No automatic completion followed collection.
+- Reloaded Pi and collected that result again. No completion was replayed, and native tool-result usage appeared only on the first collection.
+- Left another result uncollected during a busy script. Its completion was committed after the script result and before the next assistant response.
+- Observed an idle-session completion after the main response had finished.
+- Ran a print-mode background task and observed its completion before the process exited successfully.
+
+A short agent with `max_turns: 10001` finished after one turn. Its saved request retained that limit. After `/reload`, `get_subagent_result` returned its completed answer.
 
 The remaining cases below still need verification.
 
@@ -107,6 +114,10 @@ Press Ctrl+B in the main editor while it runs. Make sure that the foreground wai
 Repeat with `cp1-stop`. Open `/agents cp1-stop`, press `x`, then `y`. Make sure that stopping preserves partial output and waits for cleanup. Repeat stop through the controls available to the caller. It must not create a new attempt or duplicate completion.
 
 Ask Pi to fetch an existing background result with `get_subagent_result`, first with `wait: true` before completion, then again after completion. Collection before delivery must suppress the pending completion. Repeated reads must not report the same usage twice. Interrupting a result wait must leave the background agent running. Interrupting a foreground call before handoff must stop its child.
+
+Start a background child, then run manual compaction while it finishes. Its completion must arrive after compaction without another prompt. Repeat with cancelled compaction. These timing cases remain pending.
+
+Automatic background accounting remains blocked on a declared SDK capability in Pi 1.4. Collect the result to record its usage in main-session totals.
 
 ## Capacity and nesting
 

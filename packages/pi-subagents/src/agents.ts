@@ -11,7 +11,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 import { checkedFile, isMissing, record, safeDestination, safeName } from "./io.ts";
-import { matches, thinkingSchema, type Thinking } from "./tools.ts";
+import { matches, thinkingSchema, turnLimitSchema, type Thinking } from "./tools.ts";
 
 export const defaults: Settings = {
   maxConcurrent: 10,
@@ -39,7 +39,7 @@ const settingsSchema = Type.Object(
     maxConcurrentForeground: nonnegativeInteger,
     maxConcurrentNestedPerDepth: positiveInteger,
     maxDepth: nonnegativeInteger,
-    maxTurns: nonnegativeInteger,
+    maxTurns: turnLimitSchema,
     widgetMode: Type.Union([Type.Literal("all"), Type.Literal("background"), Type.Literal("off")]),
     fleetView: Type.Boolean(),
     agentMentions: Type.Boolean(),
@@ -205,7 +205,7 @@ const agentFields = Type.Object(
     skills: Type.Optional(Type.Array(resourceName)),
     model: Type.Optional(plainText),
     thinking: Type.Optional(thinkingSchema),
-    maxTurns: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+    maxTurns: Type.Optional(turnLimitSchema),
     isolated: Type.Optional(Type.Boolean()),
     enabled: Type.Optional(Type.Boolean()),
     color: Type.Optional(plainText),

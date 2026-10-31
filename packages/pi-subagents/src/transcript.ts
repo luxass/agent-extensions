@@ -180,6 +180,20 @@ export class TranscriptProjection {
   }
 
   apply(event: AgentSessionEvent): { rows: readonly TranscriptRow[]; result?: string } | undefined {
+    if (event.type === "entry_appended" && event.entry.type === "custom_message") {
+      const entry = event.entry;
+      return this.apply({
+        type: "message_start",
+        message: {
+          role: "custom",
+          customType: entry.customType,
+          content: entry.content,
+          display: entry.display,
+          details: entry.details,
+          timestamp: Date.parse(entry.timestamp),
+        },
+      });
+    }
     let changed = false;
     let result: string | undefined;
     if (event.type === "tool_execution_start") {

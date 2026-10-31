@@ -48,7 +48,7 @@ Routine extension instructions start collapsed. Press `n` to expand or collapse 
 
 The collapsed inline result has at most two lines. Expand it with Pi's tool-result control to read more. Detailed counters and identifiers stay in Details. Outside the supervisor, one quiet status line appears during active work. There is no idle fleet strip.
 
-The model-facing tools are `Agent`, `get_subagent_result`, and `steer_subagent`. Collection consumes that attempt's pending notification. An agent keeps its stable ID across resumes. Each execution has a separate attempt ID, cancellation control, transcript, and usage record. Foreground calls own their returned result. Background and handed-off calls send a completion message. `join: "group"` batches background completions until the joined work finishes or the 30-second delivery window expires.
+The model-facing tools are `Agent`, `get_subagent_result`, and `steer_subagent`. Collection consumes that attempt's pending notification. Its receipt survives reloads, including collection through codemode. While Pi is busy, completions wait until its current model response and tool calls finish. An agent keeps its stable ID across resumes. Each execution has a separate attempt ID, cancellation control, transcript, and usage record. Foreground calls own their returned result. Background and handed-off calls send a completion message. `join: "group"` batches background completions until the joined work finishes or the 30-second delivery window expires.
 
 Mentions accept text only. `@handle task` steers or resumes an existing agent. `@Explore task` starts that type when no matching handle exists. `@main text` sends text to the main conversation. In `clone` mode, a restricted copy of the main conversation prepares a self-contained task. `direct` mode sends the supplied task without that preparation. The preparation uses the same attempt's cancellation and capacity. Its model usage counts toward that attempt.
 
@@ -99,6 +99,8 @@ Settings load from `<agentDir>/subagents.json` and trusted `.pi/subagents.json`.
 | `viewerMarkdown`              | `"assistant"`  | Conversation Markdown: `off`, `assistant`, or `all`.                      |
 | `mentionMode`                 | `"clone"`      | Conversation-based task preparation or direct dispatch.                   |
 
+Turn limits use the same rule in configuration, tool calls, and saved records: whole numbers from `0` through `Number.MAX_SAFE_INTEGER`. Zero means unlimited. Limits above 10,000 remain valid after reload.
+
 Explicit existing limits remain in force. The corrected depth convention can reduce nesting for an existing `maxDepth` value. Nested width is bounded per depth, not across the fleet. With `maxDepth: 2`, at most ten nested agents run at depth 2 by default. With a larger depth limit, each additional nested depth has its own pool. Waiting parents do not hold their children's permits. Handoff does not restart work. It can temporarily exceed background capacity, which blocks new background admissions until the overage ends.
 
 New records live under `<agentDir>/subagents/<main-session-id>/v1/`. Attempt metadata and projected conversations use separate files. Original SDK sessions remain available in Details. A saved execution that did not settle is not treated as active in this instance. Resume stays blocked when cleanup cannot be established. This is the first supported storage format. Earlier experimental files are not loaded or migrated, and remain untouched on disk. Corrupt files are not overwritten during restoration.
@@ -130,5 +132,7 @@ Use `packageAgents` in `subagents.json` to allow all packages, disable package a
 Workflows, scheduling, and RPC are not supported. Schedule requests fail without creating a job. Existing saved data for these features remains untouched.
 
 Children share the checkout. Concurrent edits can conflict. Worktrees, calendar cron, and Herdr integration are not implemented.
+
+Pi 1.4 does not expose an extension API for recording background usage directly. Automatically delivered results do not add child usage to main-session totals until you collect them. Use `get_subagent_result` to record that usage. Repeated collection does not count the same usage again. The supervisor still shows per-agent usage.
 
 Parallel background delegation through codemode and definition saves in all four global/project folders were checked in Pi. See the [manual verification guide](https://github.com/luxass/agent-extensions/blob/main/packages/pi-subagents/docs/manual-verification.md) for the remaining runtime checks.

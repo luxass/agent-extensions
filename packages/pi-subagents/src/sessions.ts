@@ -16,6 +16,8 @@ import {
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent,
+  type BoundaryResult,
+  type BoundaryState,
   type ExtensionAPI,
   type ExtensionContext,
   type ExtensionFactory,
@@ -124,6 +126,7 @@ interface RunnerHooks {
   created(driver: SessionDriver): void;
   event(event: AgentSessionEvent): void;
   usage(usage: Usage): void;
+  boundary?(state: BoundaryState, ctx: ExtensionContext): BoundaryResult | undefined;
 }
 
 export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promise<SessionDriver> {
@@ -291,6 +294,8 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
       const noMcp = process.argv.includes("--no-mcp");
 
       const scope: ExtensionFactory = (extension) => {
+        extension.on("turn_end", (state, ctx) => hooks.boundary?.(state, ctx));
+        extension.on("agent_before_settle", (state, ctx) => hooks.boundary?.(state, ctx));
         extension.on("tool_call", (event) =>
           permitted(event.toolName)
             ? undefined

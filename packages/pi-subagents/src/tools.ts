@@ -23,6 +23,8 @@ export const thinkingSchema = Type.Union([
   Type.Literal("max"),
 ]);
 
+export const turnLimitSchema = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
+
 export const agentParameters = Type.Object(
   {
     prompt: Type.String({ minLength: 1 }),
@@ -31,7 +33,7 @@ export const agentParameters = Type.Object(
     name: Type.Optional(Type.String({ pattern: "^[a-zA-Z0-9_-]{1,80}$" })),
     model: Type.Optional(Type.String()),
     thinking: Type.Optional(thinkingSchema),
-    max_turns: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })),
+    max_turns: Type.Optional(turnLimitSchema),
     isolated: Type.Optional(Type.Boolean()),
     inherit_context: Type.Optional(Type.Boolean()),
     run_in_background: Type.Optional(Type.Boolean()),
@@ -158,6 +160,79 @@ export function matches(name: string, patterns: readonly string[]): boolean {
   );
 }
 
+export const receiptSchema = Type.Union([
+  Type.Object({
+    version: Type.Literal(1),
+    kind: Type.Literal("collection"),
+    attemptId: Type.String(),
+  }),
+  Type.Object({
+    version: Type.Literal(1),
+    kind: Type.Literal("usage"),
+    attemptId: Type.String(),
+    toolCallId: Type.String(),
+  }),
+]);
+
+const attemptReference = Type.Object({ attemptId: Type.String() });
+const completionReceipt = Type.Object({ agents: Type.Array(attemptReference) });
+const collectionReceipt = Type.Object({
+  attemptId: Type.String(),
+  snapshot: Type.Object({
+    state: Type.Union([
+      Type.Literal("completed"),
+      Type.Literal("failed"),
+      Type.Literal("cancelled"),
+    ]),
+  }),
+});
+
+export function receivedAttempts(ctx: ExtensionContext): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of ctx.sessionManager.getEntries()) {
+    if (
+      entry.type === "custom" &&
+      entry.customType === "subagent-receipt" &&
+      Value.Check(receiptSchema, entry.data) &&
+      entry.data.kind === "collection"
+    )
+      ids.add(entry.data.attemptId);
+    if (entry.type === "custom_message" && entry.customType === "subagent-completion") {
+      const details: unknown = entry.details;
+      if (Value.Check(completionReceipt, details))
+        for (const value of details.agents) ids.add(value.attemptId);
+    }
+    if (entry.type === "message" && entry.message.role === "toolResult") {
+      const details: unknown = entry.message.details;
+      if (Value.Check(collectionReceipt, details)) ids.add(details.attemptId);
+    }
+  }
+  return ids;
+}
+
+export function hasReportedUsage(ctx: ExtensionContext, attemptId: string): boolean {
+  const entries = ctx.sessionManager.getEntries();
+  const calls = new Set<string>();
+  for (const entry of entries)
+    if (
+      entry.type === "custom" &&
+      entry.customType === "subagent-receipt" &&
+      Value.Check(receiptSchema, entry.data) &&
+      entry.data.kind === "usage" &&
+      entry.data.attemptId === attemptId
+    )
+      calls.add(entry.data.toolCallId);
+  return entries.some(
+    (entry) =>
+      entry.type === "message" &&
+      entry.message.role === "toolResult" &&
+      entry.message.usage !== undefined &&
+      (calls.has(entry.message.toolCallId) ||
+        (Value.Check(collectionReceipt, entry.message.details) &&
+          entry.message.details.attemptId === attemptId)),
+  );
+}
+
 export interface AgentService {
   readonly context: ExtensionContext;
   readonly root: Owner;
@@ -171,7 +246,7 @@ export interface AgentService {
   stop(id: string, owner?: Owner, attemptId?: string): Promise<void>;
   steer(id: string, message: string, owner?: Owner, attemptId?: string): Promise<void>;
   handoff(id: string, attemptId: string): boolean;
-  consume(id: string, attemptId: string, owner?: Owner): Usage | undefined;
+  consume(id: string, attemptId: string, owner: Owner, toolCallId: string): Usage | undefined;
   waiting(owner: Owner, attemptId: string, active: boolean): void;
   loadTranscript(id: string, attemptId: string): Promise<void>;
   mention(name: string, text: string): Promise<AgentView>;
@@ -316,7 +391,7 @@ export function createAgentTools(
         const owner = capturedOwner ?? service.root;
         const view = await service.spawn(params, owner);
         if (isSettled(view.state)) {
-          const usage = service.consume(view.id, view.attemptId, owner);
+          const usage = service.consume(view.id, view.attemptId, owner, _id);
           return result(view, usage ? toolUsage(usage) : undefined);
         }
         if (view.background) return result(view);
@@ -327,7 +402,7 @@ export function createAgentTools(
         try {
           const completed = await foreground(service, view, owner, signal);
           const usage = isSettled(completed.state)
-            ? service.consume(completed.id, completed.attemptId, owner)
+            ? service.consume(completed.id, completed.attemptId, owner, _id)
             : undefined;
           return result(completed, usage ? toolUsage(usage) : undefined);
         } finally {
@@ -355,7 +430,7 @@ export function createAgentTools(
           }
         }
         const usage = isSettled(view.state)
-          ? service.consume(view.id, view.attemptId, owner)
+          ? service.consume(view.id, view.attemptId, owner, _id)
           : undefined;
         const response = result(view, usage ? toolUsage(usage) : undefined);
         if (params.verbose) {
