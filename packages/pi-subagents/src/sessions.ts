@@ -233,7 +233,7 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
       if (matches(name, definition.disallowedTools)) return false;
       if (name === "SubagentWorkflow") return false;
       if (name === "StructuredOutput") return request.schema !== undefined;
-      if (["Agent", "get_subagent_result", "steer_subagent"].includes(name))
+      if (["Agent", "get_subagent_result", "steer_subagent", "list_subagent_models"].includes(name))
         return (
           definition.allowedSubagents.length > 0 &&
           (!definition.tools || matches(name, definition.tools))

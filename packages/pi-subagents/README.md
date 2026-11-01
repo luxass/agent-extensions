@@ -48,9 +48,24 @@ Routine extension instructions start collapsed. Press `n` to expand or collapse 
 
 The collapsed inline result has at most two lines. Expand it with Pi's tool-result control to read more. Detailed counters and identifiers stay in Details. Outside the supervisor, one quiet status line appears during active work. There is no idle fleet strip.
 
-The model-facing tools are `Agent`, `get_subagent_result`, and `steer_subagent`. Collection consumes that attempt's pending notification. Its receipt survives reloads, including collection through codemode. While Pi is busy, completions wait until its current model response and tool calls finish. An agent keeps its stable ID across resumes. Each execution has a separate attempt ID, cancellation control, transcript, and usage record. Foreground calls own their returned result. Background and handed-off calls send a completion message. `join: "group"` batches background completions until the joined work finishes or the 30-second delivery window expires.
+The model-facing tools are `Agent`, `get_subagent_result`, `steer_subagent`, and `list_subagent_models`. Collection consumes that attempt's pending notification. Its receipt survives reloads, including collection through codemode. While Pi is busy, completions wait until its current model response and tool calls finish. An agent keeps its stable ID across resumes. Each execution has a separate attempt ID, cancellation control, transcript, and usage record. Foreground calls own their returned result. Background and handed-off calls send a completion message. `join: "group"` batches background completions until the joined work finishes or the 30-second delivery window expires.
 
 Mentions accept text only. `@handle task` steers or resumes an existing agent. `@Explore task` starts that type when no matching handle exists. `@main text` sends text to the main conversation. In `clone` mode, a restricted copy of the main conversation prepares a self-contained task. `direct` mode sends the supplied task without that preparation. The preparation uses the same attempt's cancellation and capacity. Its model usage counts toward that attempt.
+
+## Models
+
+Call `list_subagent_models` to read the current model IDs as `provider/modelId`. The tool does not start an agent. It reads Pi's current list when called, without polling or changing the tool schema. With `scopeModels` enabled, it lists only models permitted for explicit overrides.
+
+In codemode, the tool returns an object with a `models` array:
+
+```js
+const { models } = await tools.list_subagent_models({});
+text(models);
+```
+
+For a new agent, an explicit `Agent.model` overrides the definition's `model`. Without an explicit model, the agent uses its definition's default or inherits its immediate parent's model. Resume retains its saved model unless the call overrides it. The name `default` has no special meaning.
+
+Delegating children can use model discovery when their tool permissions include `list_subagent_models`. An explicit tool allowlist must include that name.
 
 ## Definitions and configuration
 
@@ -69,6 +84,7 @@ tools:
   - Agent
   - get_subagent_result
   - steer_subagent
+  - list_subagent_models
 allowed_subagents:
   - Explore
 memory: local

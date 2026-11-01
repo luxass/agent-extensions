@@ -205,7 +205,7 @@ export default function subagents(pi: ExtensionAPI): void {
     }
   }
 
-  const [agent, collect, steer] = createAgentTools(getManager, undefined, true);
+  const [agent, collect, steer, models] = createAgentTools(getManager, undefined, true);
   pi.registerTool({
     ...agent,
     parameters: coreAgentParameters,
@@ -213,6 +213,7 @@ export default function subagents(pi: ExtensionAPI): void {
   });
   pi.registerTool(collect);
   pi.registerTool(steer);
+  pi.registerTool(models);
   pi.registerMessageRenderer("subagent-completion", (message, options, theme) => {
     const rendered = completionCards(message.details, theme, options.expanded);
     if (rendered) return rendered;

@@ -31,7 +31,12 @@ export const agentParameters = Type.Object(
     description: Type.Optional(Type.String()),
     subagent_type: Type.Optional(Type.String()),
     name: Type.Optional(Type.String({ pattern: "^[a-zA-Z0-9_-]{1,80}$" })),
-    model: Type.Optional(Type.String()),
+    model: Type.Optional(
+      Type.String({
+        description:
+          "Optional provider/modelId override. Use list_subagent_models for choices. Omit to use the definition's default or inherit the parent's model.",
+      }),
+    ),
     thinking: Type.Optional(thinkingSchema),
     max_turns: Type.Optional(turnLimitSchema),
     isolated: Type.Optional(Type.Boolean()),
@@ -464,6 +469,50 @@ export function createAgentTools(
         const view = service.get(params.agent_id, owner);
         await service.steer(view.id, params.message, owner, view.attemptId);
         return { content: [{ type: "text", text: "Instructions queued." }], details: undefined };
+      },
+    }),
+    defineTool({
+      name: "list_subagent_models",
+      label: "Subagent models",
+      description:
+        "List current provider/modelId choices for explicit Agent model overrides. Omit Agent.model to use the definition's default or inherit the parent's model. This tool does not start an agent.",
+      parameters: Type.Object({}, { additionalProperties: false }),
+      outputSchema: Type.Object({ models: Type.Array(Type.String()) }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+
+      execute: async (_id, _params, signal, _onUpdate, ctx) => {
+        signal?.throwIfAborted();
+        const service = typeof provider === "function" ? await provider(ctx) : provider;
+        const context = service.context;
+        const models = [
+          ...new Set(
+            context.modelRegistry
+              .getAvailable()
+              .filter(
+                (model) =>
+                  !service.catalog.settings.scopeModels ||
+                  !context.scopedModels.length ||
+                  context.scopedModels.some(
+                    (entry) =>
+                      entry.model.provider === model.provider && entry.model.id === model.id,
+                  ),
+              )
+              .map((model) => `${model.provider}/${model.id}`),
+          ),
+        ].toSorted();
+        const data = { models };
+        return {
+          content: [
+            {
+              type: "text",
+              text: models.length
+                ? models.join("\n")
+                : "No models are available for explicit subagent model overrides.",
+            },
+          ],
+          structuredContent: data,
+          details: data,
+        };
       },
     }),
   ] as const;

@@ -18,6 +18,8 @@ Run root `pnpm lint`, `pnpm fmt:check`, and `pnpm typecheck` after local changes
 
 A short agent with `max_turns: 10001` finished after one turn. Its saved request retained that limit. After `/reload`, `get_subagent_result` returned its completed answer.
 
+`list_subagent_models` returned 64 sorted, unique model IDs in a fresh Pi session. A separate codemode call returned the same IDs as a structured `models` array. Neither call started an agent. Inline checks covered current-list reads, empty lists, scope filtering, cancellation, registration, and the child-session guard. Live nested discovery and model-default checks remain pending.
+
 The remaining cases below still need verification.
 
 ## Preparation
@@ -31,6 +33,14 @@ pi -e ./packages/pi-subagents
 ```
 
 If this package is already loaded in the current Pi session, use `/reload` instead. Stop if Pi reports duplicate tools or extension errors. Record the Pi version, model, theme, terminal dimensions, expected behavior, actual behavior, and screenshot for each case.
+
+## Model discovery and defaults
+
+- Call `list_subagent_models` directly and through codemode. Make sure that both return sorted, unique `provider/modelId` values from Pi's available-model list. No agent or model request must start.
+- Repeat in a disposable profile with no available models. Make sure that the result contains an empty `models` array and explains that no explicit model overrides are available.
+- In a disposable profile, enable `scopeModels` and restrict the parent's model scope. Make sure that discovery lists only permitted explicit overrides. An empty scope keeps the existing unrestricted behavior. Restore the profile afterward.
+- Give a disposable agent definition a default `model`. Start it without a model argument, then with an explicit available model. Make sure that the definition's default and explicit override each take effect. Without either value, make sure that it inherits its immediate parent's model. Resume must retain the saved model unless overridden.
+- Give a delegating child permission to use `list_subagent_models`, then repeat without that permission. Make sure that the tool follows its tool allowlist and denied tools. Remove only definitions created for this check.
 
 ## First visual pass
 
