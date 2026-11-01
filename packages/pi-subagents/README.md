@@ -20,7 +20,7 @@ pi -e ./packages/pi-subagents
 
 Ask Pi to delegate a task. Top-level agents run in the background by default. A foreground call waits for its result. With a foreground agent active, press Ctrl+B in the main editor to continue in the background. Otherwise, Ctrl+B keeps its normal editor behavior.
 
-Run `/agents` to open the live supervisor. The centered panel shows a parent-child list and the selected answer. Narrow terminals prioritize the agent list with two-line entries and a preview of at most three lines. The preview starts at the beginning of a final answer and follows the latest live output. It does not repeat the selected task or status. The panel updates as work proceeds and keeps the selected agent when its state changes.
+Run `/agents` to open the live supervisor. The command does not select by name or ID. Select an agent in the panel. The centered panel shows a parent-child list and the selected answer. Narrow terminals prioritize the agent list with two-line entries and a preview of at most three lines. The preview starts at the beginning of a final answer and follows the latest live output. It does not repeat the selected task or status. The panel updates as work proceeds and keeps the selected agent when its state changes.
 
 | Control             | Action                                                         |
 | ------------------- | -------------------------------------------------------------- |

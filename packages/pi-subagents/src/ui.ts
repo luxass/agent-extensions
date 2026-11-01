@@ -271,10 +271,7 @@ export function attachUi(pi: ExtensionAPI, service: AgentService): () => void {
   });
   pi.registerCommand("agents", {
     description: "Open the live agent supervisor, conversations, definitions, and settings",
-
-    handler: async (args) => {
-      await open(args.trim() || undefined);
-    },
+    handler: () => open(),
   });
 
   const dispose = (): void => {

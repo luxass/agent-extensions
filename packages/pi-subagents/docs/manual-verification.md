@@ -77,7 +77,7 @@ After reload, repeat the counting task. Make sure that each new number appears o
 
 ## Conversation speakers
 
-After reload, start a new general-purpose agent with `max_turns: 2`. Ask it to reply exactly `ROLE_CHECK` without tools or file changes. Open `/agents <full-agent-id>`, then press Enter.
+After reload, start a new general-purpose agent with `max_turns: 2`. Ask it to reply exactly `ROLE_CHECK` without tools or file changes. Open `/agents`, select the new agent, then press Enter.
 
 Make sure that each message has the correct speaker label:
 
@@ -105,7 +105,7 @@ Start a background general-purpose agent named cp1-stream, described as
 layout in about 100 numbered lines. It must read files but not change them.
 ```
 
-Open `/agents cp1-stream` while it works. Make sure that the preview shows the answer as it streams. Open Conversation. Scroll up with Page Up, then wait for more output. The scroll position must stay fixed. Press End to follow the end again. Switch to another agent and back. There must be no blank system section or duplicate messages.
+Open `/agents` and select `cp1-stream` while it works. Make sure that the preview shows the answer as it streams. Open Conversation. Scroll up with Page Up, then wait for more output. The scroll position must stay fixed. Press End to follow the end again. Switch to another agent and back. There must be no blank system section or duplicate messages.
 
 While the panel is open, press `s`. Type text that contains `f`, `x`, `r`, and arrow keys. Only the composer must receive them. Press Escape to cancel. Close the panel with an unfinished main-editor draft. Make sure that the draft and cursor position remain intact. With no foreground agent active, Ctrl+B must keep its normal editor behavior.
 
@@ -121,7 +121,7 @@ then reply FOREGROUND_DONE. Do not change files.
 
 Press Ctrl+B in the main editor while it runs. Make sure that the foreground wait returns, the same attempt continues, and one background completion arrives. The agent must not restart.
 
-Repeat with `cp1-stop`. Open `/agents cp1-stop`, press `x`, then `y`. Make sure that stopping preserves partial output and waits for cleanup. Repeat stop through the controls available to the caller. It must not create a new attempt or duplicate completion.
+Repeat with `cp1-stop`. Open `/agents`, select `cp1-stop`, press `x`, then `y`. Make sure that stopping preserves partial output and waits for cleanup. Repeat stop through the controls available to the caller. It must not create a new attempt or duplicate completion.
 
 Ask Pi to fetch an existing background result with `get_subagent_result`, first with `wait: true` before completion, then again after completion. Collection before delivery must suppress the pending completion. Repeated reads must not report the same usage twice. Interrupting a result wait must leave the background agent running. Interrupting a foreground call before handoff must stop its child.
 
