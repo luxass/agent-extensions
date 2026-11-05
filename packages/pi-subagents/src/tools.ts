@@ -66,7 +66,6 @@ export interface SpawnRequest {
   cwd?: string;
   isolation?: string;
   schedule?: string;
-  schema?: unknown;
   join?: "individual" | "group";
 }
 
@@ -81,7 +80,6 @@ export const usageSchema = Type.Object({
 export const spawnParameters = Type.Object({
   ...agentParameters.properties,
   cwd: Type.Optional(Type.String()),
-  schema: Type.Optional(Type.Unknown()),
   isolation: Type.Optional(Type.String()),
 });
 
@@ -276,7 +274,8 @@ export type InlineView = Pick<
   | "result"
   | "error"
   | "usage"
->;
+> &
+  Partial<Pick<AgentView, "toolCalls">>;
 
 export function inlineView(view: AgentView): InlineView {
   return {
@@ -294,6 +293,7 @@ export function inlineView(view: AgentView): InlineView {
     result: view.result,
     error: view.error,
     usage: { ...view.usage },
+    toolCalls: view.toolCalls,
   };
 }
 

@@ -12,7 +12,7 @@ import { restoreAttempts } from "./attempts.ts";
 import { createCatalog } from "./catalog.ts";
 import { record } from "./io.ts";
 import { AgentManager, type Owner } from "./manager.ts";
-import { type AgentCard, agentRenderers, completionCards, plain } from "./render.ts";
+import { agentRenderers, completionCards, plain } from "./render.ts";
 import { childSessionContext } from "./sessions.ts";
 import { coreAgentParameters, createAgentTools, inlineView, receivedAttempts } from "./tools.ts";
 import { isSettled, type AgentView } from "./transcript.ts";
@@ -45,7 +45,6 @@ export default function subagents(pi: ExtensionAPI): void {
   let groupDeadline: number | undefined;
   const outbox = new Map<string, AgentView>();
   const inFlight = new Set<string>();
-  const cards = new Set<AgentCard>();
 
   const warn = (error: unknown): void => {
     try {
@@ -209,13 +208,13 @@ export default function subagents(pi: ExtensionAPI): void {
   pi.registerTool({
     ...agent,
     parameters: coreAgentParameters,
-    ...agentRenderers(() => manager, cards),
+    ...agentRenderers(() => manager),
   });
-  pi.registerTool(collect);
-  pi.registerTool(steer);
-  pi.registerTool(models);
+  pi.registerTool({ ...collect, ...agentRenderers(() => manager, "Agent result") });
+  pi.registerTool({ ...steer, ...agentRenderers(() => manager, "Steer agent") });
+  pi.registerTool({ ...models, ...agentRenderers(() => manager, "Subagent models") });
   pi.registerMessageRenderer("subagent-completion", (message, options, theme) => {
-    const rendered = completionCards(message.details, theme, options.expanded);
+    const rendered = completionCards(message.details, theme, options.expanded, () => manager);
     if (rendered) return rendered;
     const text =
       typeof message.content === "string"
@@ -303,8 +302,6 @@ export default function subagents(pi: ExtensionAPI): void {
     inFlight.clear();
     disposeUi?.();
     disposeUi = undefined;
-    for (const card of cards) card.dispose();
-    cards.clear();
     offWarnings();
     await manager?.dispose();
     await startup?.catch(() => undefined);

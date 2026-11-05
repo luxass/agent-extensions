@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Worker } from "node:worker_threads";
 
 import {
   createAgentSession,
@@ -9,7 +8,6 @@ import {
   createMcpExtension,
   createToolSearchExtension,
   DefaultResourceLoader,
-  defineTool,
   getAgentDir,
   ModelRuntime,
   SessionManager,
@@ -40,54 +38,6 @@ import {
 /** Child loader discovery must not recursively register another root orchestrator. */
 export const childSessionContext = new AsyncLocalStorage<boolean>();
 
-/** Schema patterns run off the UI thread and are terminated if validation stalls. */
-async function validateStructured(
-  schema: unknown,
-  value: unknown,
-  signal?: AbortSignal,
-): Promise<void> {
-  const serialized = JSON.stringify({ schema, value });
-  if (serialized.length > 2_000_000 || JSON.stringify(schema).length > 64_000)
-    throw new Error("Structured output or schema exceeds its size limit.");
-  signal?.throwIfAborted();
-  const worker = new Worker(
-    `
-    const { parentPort, workerData } = require('node:worker_threads');
-    (async () => {
-      const { Value } = await import(workerData.module);
-      const { schema, value } = JSON.parse(workerData.serialized);
-      parentPort.postMessage(Value.Check(schema, value));
-    })().catch(error => { throw error; });
-  `,
-    { eval: true, workerData: { module: import.meta.resolve("typebox/value"), serialized } },
-  );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let abort!: () => void;
-  try {
-    await new Promise<void>((done, reject) => {
-      abort = () => {
-        reject(new Error("Structured output validation cancelled."));
-      };
-      signal?.addEventListener("abort", abort, { once: true });
-      timer = setTimeout(() => {
-        reject(new Error("Structured output validation exceeded one second."));
-      }, 1000);
-      worker.once("message", (valid: unknown) => {
-        if (valid === true) done();
-        else reject(new Error("Structured output does not match the requested schema."));
-      });
-      worker.once("error", reject);
-      worker.once("exit", (code) => {
-        if (code !== 0) reject(new Error(`Validation worker exited (${code}).`));
-      });
-    });
-  } finally {
-    if (timer) clearTimeout(timer);
-    signal?.removeEventListener("abort", abort);
-    await worker.terminate();
-  }
-}
-
 const instructionSchema = Type.Object({
   version: Type.Literal(1),
   projectTrusted: Type.Boolean(),
@@ -103,7 +53,7 @@ export interface SessionDriver {
   readonly sessionFile: string | undefined;
   readonly model: string | undefined;
   readonly thinking: Thinking | undefined;
-  run(): Promise<{ text: string; structured?: unknown }>;
+  run(): Promise<string>;
   steer(text: string): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -142,12 +92,10 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
     let creating: Promise<AgentSession> | undefined;
     let binding: Promise<void> | undefined;
     let disposing: Promise<void> | undefined;
-    let operation: Promise<{ text: string; structured?: unknown }> | undefined;
+    let operation: Promise<string> | undefined;
     let turns = 0;
     let budgetReached = false;
     let text = "";
-    let structured: unknown;
-    let hasStructured = false;
     let asynchronousError: unknown;
     const limit = request.max_turns ?? definition.maxTurns ?? catalog.settings.maxTurns;
     const wrapUp =
@@ -232,7 +180,6 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
       if (signal.aborted || disposed || budgetReached) return false;
       if (matches(name, definition.disallowedTools)) return false;
       if (name === "SubagentWorkflow") return false;
-      if (name === "StructuredOutput") return request.schema !== undefined;
       if (["Agent", "get_subagent_result", "steer_subagent", "list_subagent_models"].includes(name))
         return (
           definition.allowedSubagents.length > 0 &&
@@ -404,27 +351,6 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
         sessionManager = SessionManager.open(path, input.sessionDirectory, cwd);
       }
       const customTools = input.customTools.filter((tool) => permitted(tool.name));
-      if (request.schema !== undefined)
-        customTools.push(
-          defineTool({
-            name: "StructuredOutput",
-            label: "Structured output",
-            description: `Return the task result as value, matching this JSON schema: ${JSON.stringify(request.schema)}`,
-            parameters: Type.Object({ value: Type.Unknown() }),
-
-            execute: async (_id, params) => {
-              signal.throwIfAborted();
-              await validateStructured(request.schema, params.value, signal);
-              signal.throwIfAborted();
-              structured = params.value;
-              hasStructured = true;
-              return {
-                content: [{ type: "text", text: "Structured result accepted." }],
-                details: undefined,
-              };
-            },
-          }),
-        );
       signal.throwIfAborted();
       creating = createAgentSession({
         cwd,
@@ -508,52 +434,22 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
             try {
               signal.throwIfAborted();
               await wait(
-                created.prompt(
-                  `${request.prompt}${request.schema !== undefined ? "\nReturn the final result with StructuredOutput." : ""}${limit === 1 ? `\n${wrapUp}` : ""}`,
-                  { expandPromptTemplates: false, source: "extension" },
-                ),
+                created.prompt(`${request.prompt}${limit === 1 ? `\n${wrapUp}` : ""}`, {
+                  expandPromptTemplates: false,
+                  source: "extension",
+                }),
               );
               signal.throwIfAborted();
               if (asynchronousError) throw asynchronousError;
-              if (
-                request.schema !== undefined &&
-                !hasStructured &&
-                !budgetReached &&
-                !(limit > 0 && turns >= limit)
-              ) {
-                await wait(
-                  created.sendCustomMessage(
-                    {
-                      customType: "subagents:structured-output",
-                      content:
-                        "Return your completed result now through StructuredOutput. Do not perform additional work.",
-                      display: true,
-                    },
-                    { triggerTurn: true },
-                  ),
-                );
-                signal.throwIfAborted();
-              }
               const final = created.messages.at(-1);
               if (final?.role === "assistant" && final.stopReason === "error")
                 throw new Error(final.errorMessage || "Child model request failed.");
-              if (
-                request.schema !== undefined &&
-                !hasStructured &&
-                !budgetReached &&
-                !(limit > 0 && turns >= limit)
-              )
-                throw new Error("The agent did not return the requested structured output.");
-              const answer =
-                limit > 0 && turns >= limit && final?.role !== "assistant"
-                  ? `${text}\n\nTurn limit reached before a final answer. Work may be unfinished; inspect the conversation for partial tool results.`
-                  : text;
-              return hasStructured ? { text: answer, structured } : { text: answer };
+              return limit > 0 && turns >= limit && final?.role !== "assistant"
+                ? `${text}\n\nTurn limit reached before a final answer. Work may be unfinished; inspect the conversation for partial tool results.`
+                : text;
             } catch (error) {
-              if (budgetReached && !signal.aborted) {
-                const answer = `${text}\n\nTurn limit reached. Work may be unfinished; partial results are preserved in the conversation.`;
-                return hasStructured ? { text: answer, structured } : { text: answer };
-              }
+              if (budgetReached && !signal.aborted)
+                return `${text}\n\nTurn limit reached. Work may be unfinished; partial results are preserved in the conversation.`;
               throw error;
             } finally {
               reportUsage();

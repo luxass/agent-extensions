@@ -14,16 +14,11 @@ import {
   wrapTextWithAnsi,
   type Component,
 } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-import {
-  inlineView,
-  type AgentService,
-  type coreAgentParameters,
-  type InlineView,
-  type AgentParameters,
-} from "./tools.ts";
+import { record } from "./io.ts";
+import { inlineView, type AgentService, type InlineView } from "./tools.ts";
 import { contentText, isSettled, taskTitle, type AgentView } from "./transcript.ts";
 
 const inlineSchema = Type.Object({
@@ -48,6 +43,7 @@ const inlineSchema = Type.Object({
   finishedAt: Type.Optional(Type.Number()),
   result: Type.String(),
   error: Type.Optional(Type.String()),
+  toolCalls: Type.Optional(Type.Integer({ minimum: 0 })),
   usage: Type.Object({
     input: Type.Number(),
     output: Type.Number(),
@@ -56,6 +52,8 @@ const inlineSchema = Type.Object({
     cost: Type.Number(),
   }),
 });
+
+const inlineDetailsSchema = Type.Object({ snapshot: inlineSchema });
 
 export function plain(value: string): string {
   // oxlint-disable-next-line eslint/no-control-regex -- Keep printable text, tabs and line breaks.
@@ -69,8 +67,9 @@ function heading(
   time: string,
   theme: Theme,
   width: number,
+  tone: ReturnType<typeof agentBadge>["tone"] = "accent",
 ): string {
-  const label = `${theme.fg("accent", icon)} ${theme.bold(plain(role))} ${theme.fg("dim", "·")} ${plain(task).replace(/\s+/g, " ")}`;
+  const label = `${theme.fg(tone, icon)} ${theme.bold(plain(role))} ${theme.fg("dim", "·")} ${plain(task).replace(/\s+/g, " ")}`;
   const budget = Math.max(1, width - visibleWidth(time) - 2);
   if (width < 24) return truncateToWidth(label, width);
   const left = truncateToWidth(label, budget);
@@ -79,6 +78,7 @@ function heading(
 
 /** An inline card is pinned to an attempt, not the latest run with the same handle. */
 export class AgentCard implements Component {
+  private service?: AgentService;
   private unsubscribe?: () => void;
   private markdown?: Markdown;
   private body?: string;
@@ -95,16 +95,34 @@ export class AgentCard implements Component {
   constructor(
     private snapshot: InlineView,
     private theme: Theme,
-    private readonly service?: AgentService,
-    invalidate: () => void = () => {},
+    private readonly getService?: () => AgentService | undefined,
+    private readonly redraw: () => void = () => {},
   ) {
-    if (service && !isSettled(snapshot.state))
+    this.syncService();
+  }
+
+  private syncService(): void {
+    const service = this.getService?.();
+    if (service === this.service) return;
+
+    this.dispose();
+    this.service = service;
+
+    const update = (): void => {
+      const current = service?.attempt(this.snapshot.id, this.snapshot.attemptId);
+      if (current) this.snapshot = inlineView(current);
+      this.invalidate();
+    };
+
+    update();
+
+    if (service && !isSettled(this.snapshot.state)) {
       this.unsubscribe = service.subscribe(() => {
-        const current = service.attempt(snapshot.id, snapshot.attemptId);
-        if (current) this.snapshot = inlineView(current);
-        invalidate();
+        update();
         if (isSettled(this.snapshot.state)) this.dispose();
+        this.redraw();
       });
+    }
   }
 
   configure(expanded: boolean, theme: Theme): void {
@@ -113,6 +131,7 @@ export class AgentCard implements Component {
   }
 
   render(width: number): string[] {
+    this.syncService();
     const view = this.service?.attempt(this.snapshot.id, this.snapshot.attemptId) ?? this.snapshot;
     const active = !isSettled(view.state);
     const frame = active ? Math.floor(Date.now() / 150) : 0;
@@ -124,29 +143,46 @@ export class AgentCard implements Component {
       this.cached.frame === frame
     )
       return this.cached.lines;
-    const icon = active
-      ? (["◌", "◦", "○", "◦"][Math.floor(Date.now() / 150) % 4] ?? "◌")
-      : view.state === "completed"
-        ? "✓"
-        : view.state === "cancelled"
-          ? "■"
-          : "✕";
-    const lines = [
-      heading(view.displayName, taskTitle(view), icon, elapsed(view), this.theme, width),
-    ];
+    const badge = agentBadge(view);
+    const lines = [this.theme.fg(badge.tone, `${badge.icon} `) + this.theme.bold(taskTitle(view))];
+    const tokens =
+      view.usage.input + view.usage.output + view.usage.cacheRead + view.usage.cacheWrite;
+    const tokenCount =
+      tokens >= 1_000_000
+        ? `${(tokens / 1_000_000).toFixed(1)}m`
+        : tokens >= 1_000
+          ? `${(tokens / 1_000).toFixed(1)}k`
+          : String(tokens);
+    let summary: string;
+    if (active) {
+      summary = between(
+        plain(view.activity).replace(/\s+/g, " "),
+        `· ${elapsed(view)}`,
+        Math.max(0, width - 2),
+      );
+    } else {
+      const statistics = [
+        ...(view.toolCalls !== undefined
+          ? [`${view.toolCalls} tool use${view.toolCalls === 1 ? "" : "s"}`]
+          : []),
+        `${tokenCount} token${tokens === 1 ? "" : "s"}`,
+      ];
+      summary = [badge.label, ...statistics, elapsed(view)].join(" · ");
+      while (statistics.length && visibleWidth(summary) > Math.max(0, width - 2)) {
+        statistics.pop();
+        summary = [badge.label, ...statistics, elapsed(view)].join(" · ");
+      }
+    }
+    lines.push(this.theme.fg(view.state === "failed" ? "error" : "muted", `  ${summary}`));
     const text = active
       ? this.expanded
         ? view.result || view.activity
         : view.activity
       : view.result || view.error || (view.state === "completed" ? "Done" : "Stopped");
-    if (!this.expanded) {
-      const first =
-        plain(text)
-          .split("\n")
-          .find((line) => line.trim())
-          ?.trim() ?? "";
-      lines.push(truncateToWidth(this.theme.fg("muted", `  ${first}`), width));
-    } else {
+    if (!this.expanded && view.error) {
+      const error = plain(view.error).replace(/\s+/g, " ");
+      lines.push(this.theme.fg("error", `  ${error}`));
+    } else if (this.expanded && (!active || view.result)) {
       if (this.body !== text) {
         this.body = text;
         this.markdown = new Markdown(text, 0, 0, getMarkdownTheme());
@@ -155,7 +191,12 @@ export class AgentCard implements Component {
         ...(this.markdown?.render(Math.max(1, width - 2)) ?? []).map((line) => `  ${line}`),
       );
       if (view.error && view.result) lines.push(this.theme.fg("error", `  ${plain(view.error)}`));
-      lines.push(this.theme.fg("dim", `  @${view.name} · /agents ${view.id}`));
+      lines.push(
+        this.theme.fg(
+          "dim",
+          `  ${plain(view.displayName).replace(/\s+/g, " ")} · @${plain(view.name).replace(/\s+/g, " ")}`,
+        ),
+      );
     }
     const rendered = lines.map((line) => truncateToWidth(line, width));
     this.cached = {
@@ -183,32 +224,78 @@ export class AgentCard implements Component {
 
 interface InlineState {
   resultSeen?: boolean;
+  modelCount?: number;
+  hasCard?: boolean;
 }
 
 type Context = Parameters<
-  NonNullable<ToolDefinition<typeof coreAgentParameters, unknown, InlineState>["renderCall"]>
+  NonNullable<ToolDefinition<TSchema, unknown, InlineState>["renderCall"]>
 >[2];
 
-export function agentRenderers(service: () => AgentService | undefined, cards: Set<AgentCard>) {
+export function agentRenderers(
+  service: () => AgentService | undefined,
+  label: "Agent" | "Agent result" | "Steer agent" | "Subagent models" = "Agent",
+) {
   return {
     renderShell: "self" as const,
 
-    renderCall(args: Partial<AgentParameters>, theme: Theme, context: Context): Component {
+    renderCall(input: unknown, theme: Theme, context: Context): Component {
       const state = context.state;
+      const args = record(input) ? input : {};
       return {
-        render: (width) =>
-          state.resultSeen
-            ? []
-            : [
-                heading(
-                  args.subagent_type ?? "Agent",
-                  args.description ?? args.prompt?.split("\n")[0] ?? "Preparing task…",
-                  "◌",
+        render(width) {
+          if (state.hasCard && (label === "Agent" || label === "Agent result")) return [];
+          let role: string = label;
+          let task: string;
+          if (label === "Agent") {
+            role = typeof args.subagent_type === "string" ? args.subagent_type : label;
+            task =
+              typeof args.description === "string" && args.description.trim()
+                ? args.description
+                : typeof args.prompt === "string"
+                  ? (args.prompt.split("\n")[0] ?? "Preparing task…")
+                  : "Preparing task…";
+          } else if (label === "Subagent models") {
+            task = context.isError
+              ? "Failed"
+              : state.modelCount !== undefined
+                ? `${state.modelCount} available`
+                : state.resultSeen
+                  ? "Finished"
+                  : "Reading available models…";
+          } else {
+            const id = typeof args.agent_id === "string" ? args.agent_id : "";
+            const view = service()
+              ?.list()
+              .find((view) => view.id === id || view.name === id);
+            task = view ? `@${view.name}` : id || "Selecting agent…";
+          }
+          const icon = context.isError ? "✕" : state.resultSeen ? "✓" : "◌";
+          const tone = context.isError ? "error" : state.resultSeen ? "success" : "accent";
+          const lines = [
+            label === "Agent"
+              ? truncateToWidth(
+                  theme.fg(tone, `${icon} `) + theme.bold(taskTitle({ task }) || "Preparing task…"),
+                  width,
+                )
+              : heading(
+                  plain(role).replace(/\s+/g, " "),
+                  taskTitle({ task }),
+                  icon,
                   "",
                   theme,
                   width,
+                  tone,
                 ),
-              ],
+          ];
+          if (label === "Steer agent" && context.expanded && typeof args.message === "string")
+            lines.push(
+              ...wrapTextWithAnsi(plain(args.message), Math.max(1, width - 2)).map((line) =>
+                truncateToWidth(`  ${line}`, Math.max(0, width)),
+              ),
+            );
+          return lines;
+        },
 
         invalidate() {},
       };
@@ -221,18 +308,30 @@ export function agentRenderers(service: () => AgentService | undefined, cards: S
       context: Context,
     ): Component {
       context.state.resultSeen = true;
-      if (context.lastComponent instanceof AgentCard) {
-        context.lastComponent.configure(options.expanded, theme);
-        return context.lastComponent;
+      if (label === "Subagent models") {
+        const details: unknown = result.details;
+        context.state.modelCount = Value.Check(
+          Type.Object({ models: Type.Array(Type.String()) }),
+          details,
+        )
+          ? details.models.length
+          : undefined;
+        if (context.state.modelCount !== undefined && !options.expanded && !context.isError)
+          return new Text("", 0, 0);
       }
       const details: unknown = result.details;
-      if (Value.Check(Type.Object({ snapshot: inlineSchema }), details)) {
-        const card = new AgentCard(details.snapshot, theme, service(), context.invalidate);
+      context.state.hasCard = false;
+      if (Value.Check(inlineDetailsSchema, details)) {
+        context.state.hasCard = true;
+        const card =
+          context.lastComponent instanceof AgentCard
+            ? context.lastComponent
+            : new AgentCard(details.snapshot, theme, service, context.invalidate);
         card.configure(options.expanded, theme);
-        cards.add(card);
         return card;
       }
-      return new Text(
+      if (context.lastComponent instanceof AgentCard) context.lastComponent.dispose();
+      const text = new Text(
         result.content
           .flatMap((part) => (part.type === "text" ? [plain(part.text)] : []))
           .join("\n")
@@ -240,6 +339,18 @@ export function agentRenderers(service: () => AgentService | undefined, cards: S
         0,
         0,
       );
+      return {
+        render(width) {
+          const lines = text.render(Math.max(1, width - 2));
+          return (options.expanded ? lines : lines.slice(0, 2)).map((line) =>
+            truncateToWidth(
+              theme.fg(context.isError ? "error" : "muted", `  ${line}`),
+              Math.max(0, width),
+            ),
+          );
+        },
+        invalidate: () => text.invalidate(),
+      };
     },
   };
 }
@@ -248,19 +359,53 @@ export function completionCards(
   value: unknown,
   theme: Theme,
   expanded: boolean,
+  getService?: () => AgentService | undefined,
 ): Component | undefined {
   if (!Value.Check(Type.Object({ agents: Type.Array(inlineSchema) }), value)) return undefined;
   const cards = value.agents.map((snapshot) => {
-    const card = new AgentCard(snapshot, theme);
+    const card = new AgentCard(snapshot, theme, getService);
     card.configure(expanded, theme);
-    return card;
+    return { snapshot, card };
   });
+  let visible = cards;
+  let previousService: AgentService | undefined;
+  let previousLeaf: string | null | undefined;
   return {
-    render: (width) =>
-      cards.flatMap((card, index) => [...(index ? [""] : []), ...card.render(width)]),
+    render(width) {
+      const service = getService?.();
+      const leaf = service?.context.sessionManager.getLeafId();
+      if (service !== previousService || leaf !== previousLeaf) {
+        previousService = service;
+        previousLeaf = leaf;
+        const represented = new Set<string>();
+        for (const entry of service?.context.sessionManager.buildContextEntries() ?? []) {
+          if (
+            entry.type !== "message" ||
+            entry.message.role !== "toolResult" ||
+            (entry.message.toolName !== "Agent" && entry.message.toolName !== "get_subagent_result")
+          )
+            continue;
+          const details: unknown = entry.message.details;
+          if (Value.Check(inlineDetailsSchema, details))
+            represented.add(`${details.snapshot.id}/${details.snapshot.attemptId}`);
+        }
+        visible = cards.filter(
+          ({ snapshot }) => !represented.has(`${snapshot.id}/${snapshot.attemptId}`),
+        );
+      }
+      const lines: string[] = [];
+      for (const { card } of visible) {
+        if (lines.length) lines.push("");
+        lines.push(...card.render(width));
+      }
+      return lines;
+    },
 
     invalidate() {
-      for (const card of cards) card.invalidate();
+      previousService = undefined;
+      previousLeaf = undefined;
+      visible = cards;
+      for (const { card } of cards) card.invalidate();
     },
   };
 }
@@ -355,7 +500,7 @@ export function between(left: string, right: string, width: number): string {
   return `${fit(left, room)}  ${right}`;
 }
 
-export function agentBadge(view: AgentView): {
+export function agentBadge(view: Pick<AgentView, "state" | "activity">): {
   icon: string;
   label: string;
   tone: "accent" | "success" | "error" | "warning" | "muted";

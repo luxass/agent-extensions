@@ -39,7 +39,11 @@ const savedSchema = Type.Object({
   name: Type.String(),
   owner: Type.Object({ id: Type.String(), attemptId: Type.Optional(Type.String()) }),
   depth: Type.Integer({ minimum: 1 }),
-  request: spawnParameters,
+  request: Type.Object({
+    ...spawnParameters.properties,
+    // Keep legacy constraints readable, but block their execution on resume.
+    schema: Type.Optional(Type.Unknown()),
+  }),
   definition: Type.String(),
   instructions: Type.Optional(Type.String()),
   source: Type.Union([
@@ -183,8 +187,8 @@ export class Attempt {
         attemptId: this.view.attemptId,
       });
       this.progress();
-      const response = await manager.interruptible(driver.run(), signal);
-      this.publish({ result: response.text });
+      const result = await manager.interruptible(driver.run(), signal);
+      this.publish({ result });
     } catch (error) {
       if (signal.aborted && !this.driver) this.cleanupSafe = false;
       failure = signal.reason ?? error;
@@ -538,10 +542,13 @@ export async function restoreAttempts(manager: AgentManager): Promise<void> {
       attempt.usageReported = hasReportedUsage(manager.context, value.attemptId);
       attempt.cleanupSafe = value.cleanupSafe && state === value.state && !sessionIssue;
       attempt.publish({
-        resumeBlocked: attempt.cleanupSafe
-          ? undefined
-          : (sessionIssue ??
-            "Saved cleanup could not be confirmed. Start a fresh session explicitly."),
+        resumeBlocked:
+          value.request.schema !== undefined
+            ? "This saved run requires structured output, which is no longer supported. Its result remains readable. Restart explicitly with a fresh text-only session."
+            : attempt.cleanupSafe
+              ? undefined
+              : (sessionIssue ??
+                "Saved cleanup could not be confirmed. Start a fresh session explicitly."),
       });
       attempt.consumed =
         value.delivery === "inline" ||

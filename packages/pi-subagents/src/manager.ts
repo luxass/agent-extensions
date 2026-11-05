@@ -175,6 +175,8 @@ export class AgentManager implements AgentService {
       input.prompt.length > 2_000_000
     )
       throw new Error("A valid, nonempty agent request is required (maximum 2 MB).");
+    if ("schema" in input && input.schema !== undefined)
+      throw new Error("Structured output is no longer supported. No agent was started.");
     if (input.cwd && !isAbsolute(input.cwd)) throw new Error("Agent cwd must be absolute.");
     await this.catalog.reload();
     if (this.closing) throw new Error("Subagents are shutting down.");
@@ -189,6 +191,8 @@ export class AgentManager implements AgentService {
       throw new Error(
         "This saved run cannot be resumed safely. Its results remain readable; start a new agent explicitly.",
       );
+    if (previous && !restart && previous.view.resumeBlocked)
+      throw new Error(previous.view.resumeBlocked);
     const type = previous?.view.agentType ?? input.subagent_type ?? "general-purpose";
     const current = this.catalog
       .definitions()
@@ -236,7 +240,6 @@ export class AgentManager implements AgentService {
         this.catalog.settings.maxTurns,
       isolated: input.isolated ?? saved?.request.isolated,
       cwd: input.cwd ?? saved?.request.cwd,
-      schema: input.schema ?? saved?.request.schema,
     });
     const attemptId = randomUUID();
     const view: AgentView = freeze({
