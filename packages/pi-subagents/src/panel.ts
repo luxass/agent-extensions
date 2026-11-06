@@ -2,61 +2,9 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import { detailLines } from "./conversation.ts";
 import { agentBadge, between, counts, elapsed, fit, helpLines } from "./render.ts";
-import type { Filter, Supervisor, TreeRow } from "./supervisor.ts";
-import { isSettled, taskTitle, type AgentView } from "./transcript.ts";
-
-export function rebuildTree(panel: Supervisor): void {
-  const ids = new Map(panel.views.map((view) => [view.id, view]));
-  const included = new Set(
-    panel.views
-      .filter(
-        (view) => panel.filter === "all" || (panel.filter === "finished") === isSettled(view.state),
-      )
-      .map((view) => view.id),
-  );
-  // A finishing selection stays visible even in Active. Ancestors explain child ownership.
-  if (panel.selectedId && ids.has(panel.selectedId)) included.add(panel.selectedId);
-  for (const id of included) {
-    let view = ids.get(id);
-    const seen = new Set<string>();
-    while (view && !seen.has(view.id)) {
-      seen.add(view.id);
-      const parent = ids.get(view.owner.id);
-      if (!parent) break;
-      included.add(parent.id);
-      view = parent;
-    }
-  }
-  const children = new Map<string, AgentView[]>();
-  for (const view of panel.views) {
-    if (!included.has(view.id)) continue;
-    const key = ids.has(view.owner.id) ? view.owner.id : "";
-    const entries = children.get(key) ?? [];
-    entries.push(view);
-    children.set(key, entries);
-  }
-  const tree: TreeRow[] = [];
-  const visited = new Set<string>();
-
-  const visit = (view: AgentView, indent: number): void => {
-    if (visited.has(view.id)) return;
-    visited.add(view.id);
-    tree.push({ view, indent });
-    for (const child of children.get(view.id) ?? []) visit(child, indent + 1);
-  };
-
-  for (const entries of children.values())
-    entries.sort(
-      (a, b) =>
-        Number(isSettled(a.state)) - Number(isSettled(b.state)) || b.createdAt - a.createdAt,
-    );
-  for (const root of children.get("") ?? []) visit(root, 0);
-  for (const view of panel.views)
-    if (included.has(view.id) && !visited.has(view.id)) visit(view, 0);
-  panel.tree = tree;
-  if (!tree.some(({ view }) => view.id === panel.selectedId))
-    panel.selectedId = tree.find(({ view }) => !isSettled(view.state))?.view.id ?? tree[0]?.view.id;
-}
+import type { Filter, Layout, Supervisor } from "./supervisor.ts";
+import { taskTitle } from "./transcript.ts";
+import { isSettled, type AgentView } from "./types.ts";
 
 function renderDetails(
   panel: Supervisor,
@@ -73,7 +21,7 @@ function renderDetails(
   return panel.detailContent.slice(panel.details.scrollTop, panel.details.scrollTop + height);
 }
 
-function filters(panel: Supervisor, width: number): string {
+function filters(panel: Supervisor, layout: Layout, width: number): string {
   const finished = panel.views.filter((view) => isSettled(view.state)).length;
   const entries: { filter: Filter; label: string; count: number }[] = [
     { filter: "all", label: "All", count: panel.views.length },
@@ -81,17 +29,17 @@ function filters(panel: Supervisor, width: number): string {
     { filter: "finished", label: "Finished", count: finished },
   ];
   let line = "";
-  panel.filterHits = [];
+  layout.filterHits = [];
   for (const [index, entry] of entries.entries()) {
-    const start = visibleWidth(line) + panel.contentX;
+    const start = visibleWidth(line) + layout.contentX;
     const label = `${entry.label} ${entry.count}`;
     line +=
       panel.filter === entry.filter
         ? panel.theme.fg("accent", panel.theme.bold(label))
         : panel.theme.fg("muted", label);
-    panel.filterHits.push({
+    layout.filterHits.push({
       start,
-      end: visibleWidth(line) + panel.contentX,
+      end: visibleWidth(line) + layout.contentX,
       filter: entry.filter,
     });
     if (index < entries.length - 1) line += "   ";
@@ -99,8 +47,8 @@ function filters(panel: Supervisor, width: number): string {
   return fit(line, width);
 }
 
-function navigation(panel: Supervisor, width: number): string {
-  panel.navHits = [];
+function navigation(panel: Supervisor, layout: Layout, width: number): string {
+  layout.navHits = [];
   const entries =
     panel.mode === "preview"
       ? [
@@ -116,14 +64,14 @@ function navigation(panel: Supervisor, width: number): string {
   let text = "";
   for (const entry of entries) {
     const start =
-      panel.contentX +
-      (panel.mode === "preview" && panel.wide ? panel.listWidth + 3 : 0) +
+      layout.contentX +
+      (panel.mode === "preview" && layout.wide ? layout.listWidth + 3 : 0) +
       visibleWidth(text);
     text += entry.selected
       ? panel.theme.fg("accent", panel.theme.bold(entry.label))
       : panel.theme.fg("muted", entry.label);
     if (!(panel.mode === "preview" && entry.selected))
-      panel.navHits.push({ start, end: start + visibleWidth(entry.label), key: entry.key });
+      layout.navHits.push({ start, end: start + visibleWidth(entry.label), key: entry.key });
     text += "   ";
   }
   return fit(text, width);
@@ -131,7 +79,12 @@ function navigation(panel: Supervisor, width: number): string {
 
 /** One quiet footer. The complete keyboard map is behind ?. */
 
-function actions(panel: Supervisor, view: AgentView | undefined, width: number): string {
+function actions(
+  panel: Supervisor,
+  layout: Layout,
+  view: AgentView | undefined,
+  width: number,
+): string {
   const entries = panel.composer
     ? [{ key: "enter", label: "Enter Send" }]
     : panel.confirmStop
@@ -183,53 +136,50 @@ function actions(panel: Supervisor, view: AgentView | undefined, width: number):
     panel.readingPane && !panel.composer && !panel.confirmStop && !panel.help && width >= 72;
   const paused = panel.mode === "conversation" && !panel.conversation.scroll.isFollowingEnd;
   let left = readerHints ? `${paused ? "End Follow" : "↑↓ Scroll"}   [ ] Attempts` : "";
-  panel.actionHits = [];
+  layout.actionHits = [];
   if (readerHints) {
-    const previous = panel.contentX + left.indexOf("[");
-    panel.actionHits.push(
-      { start: previous, end: previous + 1, key: "[", row: 0 },
-      { start: previous + 2, end: previous + 3, key: "]", row: 0 },
+    const previous = layout.contentX + left.indexOf("[");
+    layout.actionHits.push(
+      { start: previous, end: previous + 1, key: "[" },
+      { start: previous + 2, end: previous + 3, key: "]" },
     );
     if (paused)
-      panel.actionHits.push({
-        start: panel.contentX,
-        end: panel.contentX + 10,
+      layout.actionHits.push({
+        start: layout.contentX,
+        end: layout.contentX + 10,
         key: "end",
-        row: 0,
       });
   }
   for (const entry of entries) {
     const gap = left ? "   " : "";
     if (visibleWidth(left + gap + entry.label) > budget) break;
     left += gap;
-    const start = panel.contentX + visibleWidth(left);
+    const start = layout.contentX + visibleWidth(left);
     left += entry.label;
-    panel.actionHits.push({
+    layout.actionHits.push({
       start,
       end: start + visibleWidth(entry.label),
       key: entry.key,
-      row: 0,
     });
   }
-  const rightX = panel.contentX + Math.max(0, width - visibleWidth(right));
+  const rightX = layout.contentX + Math.max(0, width - visibleWidth(right));
   if (width >= 28 && !panel.composer && !panel.confirmStop && !panel.help)
-    panel.actionHits.push({ start: rightX, end: rightX + 6, key: "?", row: 0 });
-  panel.actionHits.push({
-    start: panel.contentX + width - visibleWidth(width < 28 ? right : ending),
-    end: panel.contentX + width,
+    layout.actionHits.push({ start: rightX, end: rightX + 6, key: "?" });
+  layout.actionHits.push({
+    start: layout.contentX + width - visibleWidth(width < 28 ? right : ending),
+    end: layout.contentX + width,
     key: "escape",
-    row: 0,
   });
   return panel.theme.fg("muted", between(left, right, width));
 }
 
-function renderList(panel: Supervisor, height: number, compact = false): string[] {
-  panel.listRowHeight = compact ? 2 : 3;
-  const slots = Math.max(1, Math.floor(height / panel.listRowHeight));
-  panel.listHeight = Math.min(
+function renderList(panel: Supervisor, layout: Layout, height: number, compact = false): string[] {
+  layout.listRowHeight = compact ? 2 : 3;
+  const slots = Math.max(1, Math.floor(height / layout.listRowHeight));
+  layout.listHeight = Math.min(
     height,
-    slots * panel.listRowHeight,
-    panel.tree.length * panel.listRowHeight,
+    slots * layout.listRowHeight,
+    panel.tree.length * layout.listRowHeight,
   );
   const index = Math.max(
     0,
@@ -246,7 +196,7 @@ function renderList(panel: Supervisor, height: number, compact = false): string[
     (width, { view }) => Math.max(width, visibleWidth(elapsed(view, now))),
     6,
   );
-  const identityWidth = Math.max(0, panel.listWidth - statusWidth - durationWidth - 4);
+  const identityWidth = Math.max(0, layout.listWidth - statusWidth - durationWidth - 4);
   const lines: string[] = [];
   for (const { view, indent } of panel.tree.slice(panel.listStart, panel.listStart + slots)) {
     const selected = view.id === panel.selectedId;
@@ -257,7 +207,7 @@ function renderList(panel: Supervisor, height: number, compact = false): string[
       : "  ";
     const title = fit(
       `${marker}${branch}${selected ? panel.theme.bold(taskTitle(view)) : taskTitle(view)}`,
-      panel.listWidth,
+      layout.listWidth,
     );
     const state = panel.theme.fg(badge.tone, `${badge.icon} ${badge.label}`);
     const identity = compact ? `@${view.name} · ${view.displayName}` : view.displayName;
@@ -281,6 +231,7 @@ function renderList(panel: Supervisor, height: number, compact = false): string[
 
 function output(
   panel: Supervisor,
+  layout: Layout,
   view: AgentView | undefined,
   width: number,
   height: number,
@@ -310,6 +261,8 @@ function output(
     ),
     "",
   ];
+  // Output is drawn at bodyY in the floating and compact layouts, below this header.
+  layout.transcriptY = layout.bodyY + header.length;
   const remaining = Math.max(1, height - header.length);
   const content =
     panel.mode === "preview"
@@ -325,22 +278,22 @@ function output(
   return [...header, ...content];
 }
 
-export function renderPanel(panel: Supervisor, width: number): string[] {
-  if (panel.readingPane) return renderReadingPane(panel, width);
-  panel.contentX = 3;
-  panel.headerY = 1;
-  panel.navY = 3;
-  panel.bodyY = 5;
-  panel.inputY = -1;
-  panel.wide = panel.mode === "preview" && !panel.help && width >= 104;
+export function renderPanel(panel: Supervisor, layout: Layout, width: number): string[] {
+  if (panel.readingPane) return renderReadingPane(panel, layout, width);
+  layout.contentX = 3;
+  layout.headerY = 1;
+  layout.navY = 3;
+  layout.bodyY = 5;
+  layout.inputY = -1;
+  layout.wide = panel.mode === "preview" && !panel.help && width >= 104;
   const inner = Math.max(1, width - 6);
-  panel.listWidth = panel.wide ? Math.min(39, Math.floor(inner * 0.34)) : inner;
-  const rightWidth = panel.wide ? Math.max(1, inner - panel.listWidth - 3) : inner;
+  layout.listWidth = layout.wide ? Math.min(39, Math.floor(inner * 0.34)) : inner;
+  const rightWidth = layout.wide ? Math.max(1, inner - layout.listWidth - 3) : inner;
   const terminalHeight = Math.max(1, panel.tui.terminal.rows - (panel.fullscreen ? 0 : 4));
   const maximum = panel.fullscreen ? terminalHeight : Math.min(36, terminalHeight);
   const extra = panel.composer ? 2 : panel.confirmStop || panel.message || panel.busy ? 1 : 0;
   const available = maximum - 9 - extra;
-  if (available < 7 || width < 36) return renderCompact(panel, width, Math.max(1, maximum));
+  if (available < 7 || width < 36) return renderCompact(panel, layout, width, Math.max(1, maximum));
   const view = panel.selected();
 
   const edge = (text: string): string => panel.theme.fg("borderMuted", text);
@@ -363,35 +316,35 @@ export function renderPanel(panel: Supervisor, width: number): string[] {
           : "",
     );
   const expand = panel.theme.fg("dim", panel.fullscreen ? "f Restore" : "f Fullscreen");
-  panel.expandX = panel.contentX + inner - visibleWidth(expand);
-  const stacked = panel.mode === "preview" && !panel.help && !panel.wide;
+  layout.expandX = layout.contentX + inner - visibleWidth(expand);
+  const stacked = panel.mode === "preview" && !panel.help && !layout.wide;
   let right = panel.help
     ? helpLines(panel.theme, panel.tui.mode === "fullscreen", inner)
     : stacked
       ? []
-      : output(panel, view, rightWidth, available);
+      : output(panel, layout, view, rightWidth, available);
   const natural =
     panel.mode === "preview" && !panel.help
-      ? panel.wide
+      ? layout.wide
         ? Math.max(10, Math.min(12, panel.tree.length * 3), right.length)
         : Math.max(7, panel.tree.length * 2 + 4)
       : Math.max(10, right.length);
-  panel.bodyHeight = panel.fullscreen ? available : Math.min(available, natural);
+  layout.bodyHeight = panel.fullscreen ? available : Math.min(available, natural);
   let body: string[] = [];
-  if (panel.wide) {
-    const list = renderList(panel, panel.bodyHeight);
-    right = output(panel, view, rightWidth, panel.bodyHeight);
-    for (let index = 0; index < panel.bodyHeight; index++)
+  if (layout.wide) {
+    const list = renderList(panel, layout, layout.bodyHeight);
+    right = output(panel, layout, view, rightWidth, layout.bodyHeight);
+    for (let index = 0; index < layout.bodyHeight; index++)
       body.push(
-        `${fit(list[index] ?? "", panel.listWidth)} ${panel.theme.fg(panel.previewFocused ? "borderAccent" : "borderMuted", "│")} ${right[index] ?? ""}`,
+        `${fit(list[index] ?? "", layout.listWidth)} ${panel.theme.fg(panel.previewFocused ? "borderAccent" : "borderMuted", "│")} ${right[index] ?? ""}`,
       );
   } else if (panel.mode === "preview" && !panel.help) {
-    const previewHeight = Math.min(3, Math.max(1, Math.floor(panel.bodyHeight / 3)));
-    const listBudget = panel.bodyHeight - previewHeight - 1;
+    const previewHeight = Math.min(3, Math.max(1, Math.floor(layout.bodyHeight / 3)));
+    const listBudget = layout.bodyHeight - previewHeight - 1;
     const overflow = panel.tree.length > Math.floor(listBudget / 2);
-    body = renderList(panel, Math.max(2, listBudget - (overflow ? 1 : 0)), true);
+    body = renderList(panel, layout, Math.max(2, listBudget - (overflow ? 1 : 0)), true);
     if (overflow) {
-      const last = Math.min(panel.tree.length, panel.listStart + panel.listHeight / 2);
+      const last = Math.min(panel.tree.length, panel.listStart + layout.listHeight / 2);
       body.push(
         panel.theme.fg(
           "dim",
@@ -405,23 +358,26 @@ export function renderPanel(panel: Supervisor, width: number): string[] {
       : [panel.theme.fg("muted", "Start a task from the main conversation.")];
     body.push(...preview.slice(0, previewHeight));
   } else {
-    panel.listHeight = 0;
+    layout.listHeight = 0;
     if (panel.help) {
       panel.helpContent = right;
-      panel.helpScroll.updateLayout(right.length, panel.bodyHeight, panel.redraw);
-      body = right.slice(panel.helpScroll.scrollTop, panel.helpScroll.scrollTop + panel.bodyHeight);
-    } else body = output(panel, view, inner, panel.bodyHeight).slice(0, panel.bodyHeight);
+      panel.helpScroll.updateLayout(right.length, layout.bodyHeight, panel.redraw);
+      body = right.slice(
+        panel.helpScroll.scrollTop,
+        panel.helpScroll.scrollTop + layout.bodyHeight,
+      );
+    } else body = output(panel, layout, view, inner, layout.bodyHeight).slice(0, layout.bodyHeight);
   }
-  while (body.length < panel.bodyHeight) body.push("");
-  panel.navHits = [];
-  panel.filterHits = [];
+  while (body.length < layout.bodyHeight) body.push("");
+  layout.navHits = [];
+  layout.filterHits = [];
   const nav = panel.help
     ? panel.theme.fg("muted", "Help")
     : panel.mode === "preview"
-      ? panel.wide
-        ? `${filters(panel, panel.listWidth)}   ${navigation(panel, rightWidth)}`
-        : filters(panel, inner)
-      : navigation(panel, inner);
+      ? layout.wide
+        ? `${filters(panel, layout, layout.listWidth)}   ${navigation(panel, layout, rightWidth)}`
+        : filters(panel, layout, inner)
+      : navigation(panel, layout, inner);
   const lines = [
     rule("╭", "╮"),
     line(between(title, expand, inner)),
@@ -441,7 +397,7 @@ export function renderPanel(panel: Supervisor, width: number): string[] {
             ? "Restart · new top-level agent"
             : "Restart · current definition, fresh session";
     lines.push(line(panel.theme.fg("accent", label)));
-    panel.inputY = lines.length;
+    layout.inputY = lines.length;
     lines.push(line(panel.input.render(inner)[0] ?? ""));
   } else if (panel.confirmStop)
     lines.push(
@@ -455,8 +411,8 @@ export function renderPanel(panel: Supervisor, width: number): string[] {
   else if (panel.message) lines.push(line(panel.theme.fg("warning", panel.message)));
   else if (panel.busy) lines.push(line(panel.theme.fg("dim", "Applying action…")));
   lines.push(rule("├", "┤"));
-  panel.footerY = lines.length;
-  lines.push(line(actions(panel, view, inner)), rule("╰", "╯"));
+  layout.footerY = lines.length;
+  lines.push(line(actions(panel, layout, view, inner)), rule("╰", "╯"));
   return lines.map((text) => truncateToWidth(text, width));
 }
 
@@ -465,24 +421,24 @@ export function renderPanel(panel: Supervisor, width: number): string[] {
  * Padding every row prevents the parent transcript from showing through.
  */
 
-function renderReadingPane(panel: Supervisor, width: number): string[] {
+function renderReadingPane(panel: Supervisor, layout: Layout, width: number): string[] {
   const height = Math.max(1, panel.tui.terminal.rows);
   if (height < 7 || width < 28) {
-    const lines = renderCompact(panel, width, height);
+    const lines = renderCompact(panel, layout, width, height);
     while (lines.length < height) lines.push("");
     return lines.map((line) => fit(line, width));
   }
-  panel.contentX = 2;
-  panel.headerY = -1;
-  panel.navY = 0;
-  panel.bodyY = 3;
-  panel.inputY = -1;
-  panel.listHeight = 0;
-  panel.wide = false;
-  panel.filterHits = [];
+  layout.contentX = 2;
+  layout.headerY = -1;
+  layout.navY = 0;
+  layout.bodyY = 3;
+  layout.inputY = -1;
+  layout.listHeight = 0;
+  layout.wide = false;
+  layout.filterHits = [];
   const inner = Math.max(1, width - 4);
   const extra = panel.composer ? 2 : panel.confirmStop || panel.message || panel.busy ? 1 : 0;
-  panel.bodyHeight = Math.max(1, height - 5 - extra);
+  layout.bodyHeight = Math.max(1, height - 5 - extra);
   const view = panel.selected();
   const badge = view ? agentBadge(view) : undefined;
   const back = panel.help
@@ -490,8 +446,8 @@ function renderReadingPane(panel: Supervisor, width: number): string[] {
     : panel.mode === "details" && panel.detailsFromConversation
       ? "← Conversation"
       : "← Agents";
-  panel.navHits = [
-    { start: panel.contentX, end: panel.contentX + visibleWidth(back), key: "escape" },
+  layout.navHits = [
+    { start: layout.contentX, end: layout.contentX + visibleWidth(back), key: "escape" },
   ];
   const name = view
     ? panel.theme.bold(view.name) +
@@ -516,22 +472,24 @@ function renderReadingPane(panel: Supervisor, width: number): string[] {
   let body: string[];
   if (panel.help) {
     panel.helpContent = helpLines(panel.theme, panel.tui.mode === "fullscreen", inner);
-    panel.helpScroll.updateLayout(panel.helpContent.length, panel.bodyHeight, panel.redraw);
+    panel.helpScroll.updateLayout(panel.helpContent.length, layout.bodyHeight, panel.redraw);
     body = panel.helpContent.slice(
       panel.helpScroll.scrollTop,
-      panel.helpScroll.scrollTop + panel.bodyHeight,
+      panel.helpScroll.scrollTop + layout.bodyHeight,
     );
   } else if (!view) body = ["No conversation selected."];
-  else if (panel.mode === "details") body = renderDetails(panel, view, inner, panel.bodyHeight);
-  else
+  else if (panel.mode === "details") body = renderDetails(panel, view, inner, layout.bodyHeight);
+  else {
+    layout.transcriptY = layout.bodyY;
     body = panel.conversation.render(
       view,
       inner,
-      panel.bodyHeight,
+      layout.bodyHeight,
       panel.service.catalog.settings.viewerMarkdown,
       true,
     );
-  for (let row = 0; row < panel.bodyHeight; row++) lines.push(line(body[row] ?? ""));
+  }
+  for (let row = 0; row < layout.bodyHeight; row++) lines.push(line(body[row] ?? ""));
   if (panel.composer) {
     lines.push(
       line(
@@ -545,52 +503,55 @@ function renderReadingPane(panel: Supervisor, width: number): string[] {
         ),
       ),
     );
-    panel.inputY = lines.length;
+    layout.inputY = lines.length;
     lines.push(line(panel.input.render(inner)[0] ?? ""));
   } else if (panel.confirmStop)
     lines.push(line(panel.theme.fg("warning", "Stop this agent and its children? y / n")));
   else if (panel.message) lines.push(line(panel.theme.fg("warning", panel.message)));
   else if (panel.busy) lines.push(line(panel.theme.fg("dim", "Applying action…")));
   lines.push(rule);
-  panel.footerY = lines.length;
-  lines.push(line(actions(panel, view, inner)));
+  layout.footerY = lines.length;
+  lines.push(line(actions(panel, layout, view, inner)));
   return lines.map((text) => fit(text, width));
 }
 
-function renderCompact(panel: Supervisor, width: number, height: number): string[] {
-  panel.contentX = 0;
-  panel.headerY = height <= 3 ? -1 : 0;
-  panel.navY = -1;
-  panel.expandX = Math.max(0, width - 12);
-  panel.navHits = [];
-  panel.filterHits = [];
-  panel.actionHits = [];
-  panel.listHeight = 0;
-  panel.bodyY = 1;
-  panel.inputY = -1;
-  panel.bodyHeight = Math.max(1, height - 2);
+function renderCompact(panel: Supervisor, layout: Layout, width: number, height: number): string[] {
+  layout.contentX = 0;
+  layout.headerY = height <= 3 ? -1 : 0;
+  layout.navY = -1;
+  layout.expandX = Math.max(0, width - 12);
+  layout.navHits = [];
+  layout.filterHits = [];
+  layout.actionHits = [];
+  layout.listHeight = 0;
+  layout.bodyY = 1;
+  layout.inputY = -1;
+  layout.bodyHeight = Math.max(1, height - 2);
   const view = panel.selected();
   let lines = height <= 3 ? [] : [panel.theme.fg("accent", panel.theme.bold("Agents"))];
-  panel.bodyY = lines.length;
+  layout.bodyY = lines.length;
   if (panel.composer) {
     if (height <= 2) lines = [];
-    panel.inputY = lines.length;
+    layout.inputY = lines.length;
     lines.push(panel.input.render(width)[0] ?? "");
   } else if (panel.confirmStop) lines.push("Stop this agent and its children? y / n");
   else if (panel.help) {
     panel.helpContent = helpLines(panel.theme, panel.tui.mode === "fullscreen", width);
-    panel.helpScroll.updateLayout(panel.helpContent.length, panel.bodyHeight, panel.redraw);
+    panel.helpScroll.updateLayout(panel.helpContent.length, layout.bodyHeight, panel.redraw);
     lines.push(
       ...panel.helpContent.slice(
         panel.helpScroll.scrollTop,
-        panel.helpScroll.scrollTop + panel.bodyHeight,
+        panel.helpScroll.scrollTop + layout.bodyHeight,
       ),
     );
-  } else lines.push(...output(panel, view, width, panel.bodyHeight).slice(0, panel.bodyHeight));
+  } else
+    lines.push(
+      ...output(panel, layout, view, width, layout.bodyHeight).slice(0, layout.bodyHeight),
+    );
   lines = lines.slice(0, Math.max(1, height - 1));
   if (height > 1) {
-    panel.footerY = lines.length;
-    lines.push(actions(panel, view, width));
-  } else panel.footerY = -1;
+    layout.footerY = lines.length;
+    lines.push(actions(panel, layout, view, width));
+  } else layout.footerY = -1;
   return lines.map((line) => truncateToWidth(line, width));
 }

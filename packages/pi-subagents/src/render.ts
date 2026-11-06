@@ -18,8 +18,9 @@ import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 import { record } from "./io.ts";
-import { inlineView, type AgentService, type InlineView } from "./tools.ts";
-import { contentText, isSettled, taskTitle, type AgentView } from "./transcript.ts";
+import type { AgentManager } from "./manager.ts";
+import { contentText, promptTitle, taskTitle } from "./transcript.ts";
+import { inlineView, isSettled, isWaiting, type AgentView, type InlineView } from "./types.ts";
 
 const inlineSchema = Type.Object({
   id: Type.String(),
@@ -55,6 +56,23 @@ const inlineSchema = Type.Object({
 
 const inlineDetailsSchema = Type.Object({ snapshot: inlineSchema });
 
+/**
+ * The first line of actual text in an answer. Headings, rules, and code fences are skipped,
+ * because a line such as "Purpose" says nothing about the result.
+ */
+function answerLine(result: string): string {
+  const lines = plain(result)
+    .split("\n")
+    .map((text) => text.trim())
+    .filter(Boolean);
+  const line =
+    lines.find((text) => !/^(?:#{1,6}\s|```|~~~|[-*_]{3,}$)/.test(text)) ?? lines[0] ?? "";
+  return line
+    .replace(/^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/, "")
+    .replace(/\*\*|__|`/g, "")
+    .replace(/\s+/g, " ");
+}
+
 export function plain(value: string): string {
   // oxlint-disable-next-line eslint/no-control-regex -- Keep printable text, tabs and line breaks.
   return stripTerminalSequences(value).replace(/[\x00-\x08\u000b-\x1f\u007f]/g, "");
@@ -78,7 +96,7 @@ function heading(
 
 /** An inline card is pinned to an attempt, not the latest run with the same handle. */
 export class AgentCard implements Component {
-  private service?: AgentService;
+  private service?: AgentManager;
   private unsubscribe?: () => void;
   private markdown?: Markdown;
   private body?: string;
@@ -95,7 +113,7 @@ export class AgentCard implements Component {
   constructor(
     private snapshot: InlineView,
     private theme: Theme,
-    private readonly getService?: () => AgentService | undefined,
+    private readonly getService?: () => AgentManager | undefined,
     private readonly redraw: () => void = () => {},
   ) {
     this.syncService();
@@ -182,6 +200,10 @@ export class AgentCard implements Component {
     if (!this.expanded && view.error) {
       const error = plain(view.error).replace(/\s+/g, " ");
       lines.push(this.theme.fg("error", `  ${error}`));
+    } else if (!this.expanded && !active) {
+      // One line of the answer. The full answer stays behind the expand control.
+      const answer = answerLine(view.result);
+      if (answer) lines.push(`  ${answer}`);
     } else if (this.expanded && (!active || view.result)) {
       if (this.body !== text) {
         this.body = text;
@@ -233,7 +255,7 @@ type Context = Parameters<
 >[2];
 
 export function agentRenderers(
-  service: () => AgentService | undefined,
+  service: () => AgentManager | undefined,
   label: "Agent" | "Agent result" | "Steer agent" | "Subagent models" = "Agent",
 ) {
   return {
@@ -253,7 +275,7 @@ export function agentRenderers(
               typeof args.description === "string" && args.description.trim()
                 ? args.description
                 : typeof args.prompt === "string"
-                  ? (args.prompt.split("\n")[0] ?? "Preparing task…")
+                  ? promptTitle(args.prompt) || "Preparing task…"
                   : "Preparing task…";
           } else if (label === "Subagent models") {
             task = context.isError
@@ -359,7 +381,7 @@ export function completionCards(
   value: unknown,
   theme: Theme,
   expanded: boolean,
-  getService?: () => AgentService | undefined,
+  getService?: () => AgentManager | undefined,
 ): Component | undefined {
   if (!Value.Check(Type.Object({ agents: Type.Array(inlineSchema) }), value)) return undefined;
   const cards = value.agents.map((snapshot) => {
@@ -368,7 +390,7 @@ export function completionCards(
     return { snapshot, card };
   });
   let visible = cards;
-  let previousService: AgentService | undefined;
+  let previousService: AgentManager | undefined;
   let previousLeaf: string | null | undefined;
   return {
     render(width) {
@@ -457,13 +479,15 @@ export function counts(views: readonly AgentView[]): {
   return {
     running: views.filter(
       (view) =>
-        (view.state === "running" || view.state === "starting") &&
+        (view.state === "running" ||
+          view.state === "starting" ||
+          (view.state === "queued" && !isWaiting(view))) &&
         !view.activity.startsWith("Waiting for child"),
     ).length,
     waiting: views.filter(
       (view) => view.activity.startsWith("Waiting for child") || view.state === "settling",
     ).length,
-    queued: views.filter((view) => view.state === "queued").length,
+    queued: views.filter((view) => isWaiting(view)).length,
     finished: views.filter((view) => isSettled(view.state)).length,
   };
 }
@@ -513,9 +537,9 @@ export function agentBadge(view: Pick<AgentView, "state" | "activity">): {
       ? view.activity.startsWith("Waiting for child")
         ? "Waiting"
         : "Running"
-      : view.state === "queued"
+      : isWaiting(view)
         ? "Queued"
-        : view.state === "starting"
+        : view.state === "starting" || view.state === "queued"
           ? "Starting"
           : "Finishing";
   return {

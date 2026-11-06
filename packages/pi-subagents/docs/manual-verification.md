@@ -6,12 +6,14 @@ Run root `pnpm lint`, `pnpm fmt:check`, and `pnpm typecheck` after local changes
 
 ## Verified in Pi
 
+These checks predate the simplification that changed delivery, usage accounting, mentions, storage, and the supervisor layout. Run them again before release.
+
 - Started ten background child agents in parallel through codemode and observed their completion messages.
 - Created and saved a project agent definition through the supervisor UI.
 - Reloaded Pi, then edited and saved definitions under `~/.pi/agent/agents`, `~/.agents/agents`, `.pi/agents`, and `.agents/agents`.
 - Confirmed each save notification and checked the changed file at its original path. Removed the demo definitions afterward.
 - Collected a completed background result through codemode while the main script was still busy. No automatic completion followed collection.
-- Reloaded Pi and collected that result again. No completion was replayed, and native tool-result usage appeared only on the first collection.
+- Reloaded Pi and collected that result again. No completion was replayed.
 - Left another result uncollected during a busy script. Its completion was committed after the script result and before the next assistant response.
 - Observed an idle-session completion after the main response had finished.
 - Ran a print-mode background task and observed its completion before the process exited successfully.
@@ -123,11 +125,11 @@ Press Ctrl+B in the main editor while it runs. Make sure that the foreground wai
 
 Repeat with `cp1-stop`. Open `/agents`, select `cp1-stop`, press `x`, then `y`. Make sure that stopping preserves partial output and waits for cleanup. Repeat stop through the controls available to the caller. It must not create a new attempt or duplicate completion.
 
-Ask Pi to fetch an existing background result with `get_subagent_result`, first with `wait: true` before completion, then again after completion. Collection before delivery must suppress the pending completion. Repeated reads must not report the same usage twice. Interrupting a result wait must leave the background agent running. Interrupting a foreground call before handoff must stop its child.
+Ask Pi to fetch an existing background result with `get_subagent_result`, first with `wait: true` before completion, then again after completion. Collection before delivery must suppress the pending completion. Collection must not add usage to the main-session totals. Interrupting a result wait must leave the background agent running. Interrupting a foreground call before handoff must stop its child.
 
 Start a background child, then run manual compaction while it finishes. Its completion must arrive after compaction without another prompt. Repeat with cancelled compaction. These timing cases remain pending.
 
-Automatic background accounting remains blocked on a declared SDK capability in Pi 1.4. Collect the result to record its usage in main-session totals.
+Only foreground results add child usage to the main-session totals. Make sure that a foreground result adds its usage once, and that a background agent adds none, whether it is delivered or collected.
 
 ## Capacity and nesting
 
@@ -218,23 +220,31 @@ All of these cases remain pending until observed in Pi:
 
 - [ ] Load definitions with YAML list fields, including `display_name` and `prompt_mode` aliases, without false warnings for absent optional skill directories.
 - [ ] Try scalar and comma-separated values for each list field. Make sure that the error explains the YAML list format and leaves the file unchanged. Replace them with block or flow lists and reload.
-- [ ] Reject unknown fields, repeated aliases, invalid field types, and unsupported worktrees. Keep nested delegation off when `allowed_subagents` is absent. Save and reload a definition through the editor without changing its permissions.
+- [ ] Reject unknown fields (including worktree settings), repeated aliases, and invalid field types. Keep nested delegation off when `allowed_subagents` is absent. Save and reload a definition through the editor without changing its permissions.
 - [ ] Create, edit, disable, enable, and eject definitions. Make sure that package and unrelated files remain unchanged.
 - [ ] Exercise trusted project, user, and package precedence. Refuse untrusted project configuration.
 - [ ] Select a registered custom provider and model. Exercise inherited context after branch changes and compaction.
 - [ ] Enforce allowed and denied tools, current model scope, extension isolation, `--no-extensions`, and `--no-mcp`.
 - [ ] Exercise user, project, and local memory. Read-only agents must receive no write/edit permission and no permission to change memory through another tool.
-- [ ] Use `@main`, `@handle`, and type mentions. Compare clone preparation with direct mode. Make sure that preparation stops on cancellation and counts its usage once.
+- [ ] Use `@main`, `@handle`, and type mentions. With `mentionContext` off, a new agent must receive only the typed text. With it on, the agent must also receive the main conversation.
+- [ ] Ask for an unknown agent type, such as `Explorer`. The call must fail and list the available types. No agent must start.
+- [ ] Add a misspelled setting, such as `maxConcurrentForegound`, to `subagents.json`. The catalog must warn about the unknown setting.
+- [ ] Save a definition with a prompt larger than 1 MiB. The save must fail and leave the existing file unchanged.
+- [ ] Finish an agent whose conversation view exceeds 8 MB. Its result must still be saved and readable after reload. Opening the conversation must point to the SDK session file.
+- [ ] In the floating Conversation, click a collapsed notice. That notice, not a nearby row, must toggle. Scroll the mouse wheel over the agent list. The selection must move one agent in the wheel direction.
+- [ ] Start a background agent, send another message, and let the completion arrive. In `/tree`, go back to the message before the completion and choose No summary. The completion must arrive on the new branch. Navigate back to the first branch: no duplicate must arrive. Navigate to before the start request: nothing must arrive.
+- [ ] Give a definition `allowed_subagents: [Explore]` and let its agent start a foreground Explore child. Pi must stay responsive and below normal CPU use while the child runs. The child must appear indented under its parent, and the parent's usage must include the child's.
+- [ ] Subscribe to every `subagents:*` event from a test extension. Make sure that each payload matches the README, including `owner` and `state`.
 - [ ] Force startup failure and a small turn budget. Preserve partial output and show unfinished work rather than claiming task success.
 - [ ] Request immediate resume while cleanup runs. Refuse it until settlement. Repeat stop without overlapping attempts.
-- [ ] Reload, switch sessions, and shut down during preparation, startup, nested waits, and active work. Make sure that no old UI listener or late child survives.
+- [ ] Reload, switch sessions, and shut down during startup, nested waits, and active work. Make sure that no old UI listener or late child survives.
 - [ ] Run an immediate headless task. Background work must settle without terminal-only calls. Save its output and errors.
 - [ ] Inspect idle behavior. There must be no idle polling or per-card timer.
 
 ## Unsupported features
 
-Workflows, gates, replay, scheduling, and RPC are not supported. Their tools, menus, and ready notifications must not claim availability. A schedule request must fail without creating a job. Existing saved jobs and advanced files must remain unchanged.
+Workflows, scheduling, RPC, and worktrees are not supported. No tool, menu, or setting must offer them. A `schedule` argument must fail as an unknown field.
 
-Worktrees, calendar cron, and Herdr integration remain out of scope. Children share the checkout. Trusted extensions and shell tools are not an operating-system sandbox.
+Calendar cron and Herdr integration remain out of scope. Children share the checkout. Trusted extensions and shell tools are not an operating-system sandbox.
 
 Record screenshots and failures from the cases above. Static checks do not establish runtime acceptance.

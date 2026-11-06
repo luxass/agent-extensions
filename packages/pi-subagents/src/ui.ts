@@ -10,14 +10,14 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 
-import type { AgentDefinition, Settings } from "./agents.ts";
+import { settingsSchema, type AgentDefinition, type Settings } from "./agents.ts";
+import type { AgentManager } from "./manager.ts";
 import { animationClock, counts } from "./render.ts";
 import { openSupervisor } from "./supervisor.ts";
-import { thinkingSchema, type AgentService } from "./tools.ts";
-import { isSettled, type AgentView } from "./transcript.ts";
+import { isSettled, sameOwner, thinkingSchema, type AgentView } from "./types.ts";
 
 /** UI is a subscriber, never a lifecycle owner or an SDK session observer. */
-export function attachUi(pi: ExtensionAPI, service: AgentService): () => void {
+export function attachUi(pi: ExtensionAPI, service: AgentManager): () => void {
   const ctx = service.context;
   if (ctx.mode !== "tui") return () => {};
   const widgetKey = "subagents-active";
@@ -90,7 +90,7 @@ export function attachUi(pi: ExtensionAPI, service: AgentService): () => void {
               description: definition.description,
             })),
           ...views
-            .filter((view) => view.owner.id === service.root.id && !view.owner.attemptId)
+            .filter((view) => sameOwner(view.owner, service.root))
             .map((view) => ({
               value: `@${view.name}`,
               label: `@${view.name}`,
@@ -157,8 +157,7 @@ export function attachUi(pi: ExtensionAPI, service: AgentService): () => void {
       ) {
         const foreground = views.find(
           (view) =>
-            view.owner.id === service.root.id &&
-            !view.owner.attemptId &&
+            sameOwner(view.owner, service.root) &&
             !view.background &&
             !isSettled(view.state) &&
             view.state !== "settling",
@@ -238,9 +237,7 @@ export function attachUi(pi: ExtensionAPI, service: AgentService): () => void {
     const target = match[1]!;
     const prompt = match[2]?.trim() ?? "";
     if (target === "main") return { action: "transform", text: prompt, images: event.images };
-    const rootRuns = views.filter(
-      (view) => view.owner.id === service.root.id && !view.owner.attemptId,
-    );
+    const rootRuns = views.filter((view) => sameOwner(view.owner, service.root));
     const known =
       rootRuns.some(
         (view) => view.id === target || view.name.toLowerCase() === target.toLowerCase(),
@@ -304,7 +301,7 @@ export function attachUi(pi: ExtensionAPI, service: AgentService): () => void {
 
 async function editDefinition(
   ctx: ExtensionContext,
-  service: AgentService,
+  service: AgentManager,
   original?: AgentDefinition,
 ): Promise<void> {
   const name = original?.name ?? (await ctx.ui.input("Agent name", "my-agent"));
@@ -418,7 +415,7 @@ async function editDefinition(
   }
 }
 
-async function configurations(ctx: ExtensionContext, service: AgentService): Promise<void> {
+async function configurations(ctx: ExtensionContext, service: AgentManager): Promise<void> {
   while (true) {
     const definitions = service.catalog.definitions();
     const choices = [
@@ -476,10 +473,9 @@ const settingKeys = [
   "maxTurns",
   "widgetMode",
   "agentMentions",
-  "mentionMode",
+  "mentionContext",
   "viewerMarkdown",
   "scopeModels",
-  "fallbackSubagent",
   "packageAgents",
 ] as const satisfies readonly (keyof Settings)[];
 
@@ -491,14 +487,13 @@ const labels: Record<(typeof settingKeys)[number], string> = {
   maxTurns: "Default turn limit",
   widgetMode: "Active status line",
   agentMentions: "Agent mentions",
-  mentionMode: "Mention context",
+  mentionContext: "New mentions read the conversation",
   viewerMarkdown: "Conversation Markdown",
   scopeModels: "Scope models",
-  fallbackSubagent: "Fallback agent",
   packageAgents: "Package agent policy",
 };
 
-async function settings(ctx: ExtensionContext, service: AgentService): Promise<void> {
+async function settings(ctx: ExtensionContext, service: AgentManager): Promise<void> {
   while (true) {
     const current = service.catalog.settings;
     const choices = settingKeys.map((key) => `${labels[key]}: ${JSON.stringify(current[key])}`);
@@ -507,22 +502,14 @@ async function settings(ctx: ExtensionContext, service: AgentService): Promise<v
     const key = settingKeys[choices.indexOf(selected)];
     if (!key) continue;
     try {
-      if (key === "widgetMode") {
-        const value = await ctx.ui.select("Active status line", ["all", "background", "off"]);
-        if (value === "all" || value === "background" || value === "off")
-          await service.catalog.saveSettings({ widgetMode: value });
-      } else if (key === "viewerMarkdown") {
-        const value = await ctx.ui.select("Conversation Markdown", ["off", "assistant", "all"]);
-        if (value === "off" || value === "assistant" || value === "all")
-          await service.catalog.saveSettings({ viewerMarkdown: value });
-      } else if (key === "mentionMode") {
-        const value = await ctx.ui.select("Mention context", ["clone", "direct"]);
-        if (value === "clone" || value === "direct")
-          await service.catalog.saveSettings({ mentionMode: value });
-      } else if (key === "fallbackSubagent") {
-        const value = await ctx.ui.select("Fallback agent", ["general-purpose", "none"]);
-        if (value === "general-purpose" || value === "none")
-          await service.catalog.saveSettings({ fallbackSubagent: value });
+      if (key === "widgetMode" || key === "viewerMarkdown") {
+        // Read the choices from the schema, so the form cannot drift from validation.
+        const options: string[] = settingsSchema.properties[key].anyOf.map(
+          (option) => option.const,
+        );
+        const value = await ctx.ui.select(labels[key], options);
+        // saveSettings validates the value against the same schema.
+        if (value) await service.catalog.saveSettings({ [key]: value });
       } else if (key === "packageAgents") {
         const value = await ctx.ui.select("Package agents", [
           "All",
@@ -543,7 +530,7 @@ async function settings(ctx: ExtensionContext, service: AgentService): Promise<v
                 .filter(Boolean),
             });
         } else await service.catalog.saveSettings({ packageAgents: value === "All" });
-      } else if (key === "agentMentions" || key === "scopeModels") {
+      } else if (key === "agentMentions" || key === "mentionContext" || key === "scopeModels") {
         const value = await ctx.ui.select(labels[key], ["on", "off"]);
         if (value) await service.catalog.saveSettings({ [key]: value === "on" });
       } else {

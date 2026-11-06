@@ -1,80 +1,9 @@
-import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-import type { AgentDefinition } from "./agents.ts";
 import { record } from "./io.ts";
-import type { AttemptState, Owner } from "./manager.ts";
-import type { Thinking, Usage } from "./tools.ts";
-
-type AssistantMessage = Extract<AgentSession["messages"][number], { role: "assistant" }>;
-
-export type TranscriptRow =
-  | { readonly id: string; readonly kind: "user"; readonly text: string }
-  | {
-      readonly id: string;
-      readonly kind: "extension";
-      readonly text: string;
-      readonly notice?: "turn-budget" | "structured-output";
-    }
-  | {
-      readonly id: string;
-      readonly kind: "assistant";
-      readonly message: AssistantMessage;
-      readonly streaming: boolean;
-    }
-  | {
-      readonly id: string;
-      readonly kind: "tool";
-      readonly name: string;
-      readonly args: Record<string, unknown>;
-      readonly text: string;
-      readonly pending: boolean;
-      readonly error: boolean;
-    };
-
-export interface AgentView {
-  readonly id: string;
-  readonly attemptId: string;
-  readonly attemptNumber: number;
-  readonly owner: Owner;
-  readonly depth: number;
-  readonly name: string;
-  readonly agentType: string;
-  readonly displayName: string;
-  readonly task: string;
-  readonly prompt: string;
-  readonly state: AttemptState;
-  readonly activity: string;
-  readonly background: boolean;
-  readonly createdAt: number;
-  readonly startedAt?: number;
-  readonly finishedAt?: number;
-  readonly result: string;
-  readonly error?: string;
-  readonly model?: string;
-  readonly thinking?: Thinking;
-  readonly usage: Readonly<Usage>;
-  readonly lifetimeUsage: Readonly<Usage>;
-  readonly turns: number;
-  readonly toolCalls: number;
-  readonly outputFile: string;
-  readonly sessionFile?: string;
-  readonly definition: Readonly<AgentDefinition>;
-  readonly transcript: readonly TranscriptRow[];
-  readonly transcriptLoaded: boolean;
-  readonly resumeBlocked?: string;
-}
-
-export function isSettled(state: AttemptState): boolean {
-  return state === "completed" || state === "failed" || state === "cancelled";
-}
-
-export function immutable<T>(value: T): T {
-  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value as Record<string, unknown>)) immutable(child);
-  return Object.freeze(value);
-}
+import type { AgentView, TranscriptRow } from "./types.ts";
 
 export function contentText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -136,9 +65,7 @@ const rowsSchema = Type.Array(
       id: Type.String(),
       kind: Type.Literal("extension"),
       text: Type.String(),
-      notice: Type.Optional(
-        Type.Union([Type.Literal("turn-budget"), Type.Literal("structured-output")]),
-      ),
+      notice: Type.Optional(Type.Literal("turn-budget")),
     }),
     Type.Object({
       id: Type.String(),
@@ -162,7 +89,7 @@ export function decodeTranscript(value: unknown): readonly TranscriptRow[] {
   if (!Value.Check(rowsSchema, value))
     throw new Error("Invalid saved conversation. The source file was left unchanged.");
   // The persisted provider/API identifiers are strings; presentation never dispatches them.
-  return immutable(value as unknown as TranscriptRow[]);
+  return value as unknown as TranscriptRow[];
 }
 
 /** Projection is updated once per SDK event, never rebuilt on an animation frame. */
@@ -173,10 +100,13 @@ export class TranscriptProjection {
 
   restore(rows: readonly TranscriptRow[]): void {
     this.rows = [...rows];
+    // Continue numbering after the restored rows, so new row IDs stay unique.
+    this.sequence = rows.length;
+    this.assistantId = undefined;
   }
 
   snapshot(): readonly TranscriptRow[] {
-    return Object.freeze([...this.rows]);
+    return [...this.rows];
   }
 
   apply(event: AgentSessionEvent): { rows: readonly TranscriptRow[]; result?: string } | undefined {
@@ -198,17 +128,15 @@ export class TranscriptProjection {
     let result: string | undefined;
     if (event.type === "tool_execution_start") {
       const args: unknown = event.args;
-      this.rows.push(
-        immutable({
-          id: event.toolCallId,
-          kind: "tool",
-          name: event.toolName,
-          args: record(args) ? structuredClone(args) : {},
-          text: "",
-          pending: true,
-          error: false,
-        }),
-      );
+      this.rows.push({
+        id: event.toolCallId,
+        kind: "tool",
+        name: event.toolName,
+        args: record(args) ? structuredClone(args) : {},
+        text: "",
+        pending: true,
+        error: false,
+      });
       changed = true;
     }
     if (event.type === "tool_execution_end" || event.type === "tool_execution_update") {
@@ -219,12 +147,12 @@ export class TranscriptProjection {
       );
       const row = this.rows[index];
       if (row?.kind === "tool") {
-        this.rows[index] = immutable({
+        this.rows[index] = {
           ...row,
           text: record(value) ? contentText(value.content) : "",
           pending: event.type === "tool_execution_update",
           error: event.type === "tool_execution_end" && event.isError,
-        });
+        };
         changed = true;
       }
     }
@@ -242,13 +170,9 @@ export class TranscriptProjection {
                 kind: "extension",
                 text: value,
                 notice:
-                  event.message.customType === "subagents:turn-budget"
-                    ? "turn-budget"
-                    : event.message.customType === "subagents:structured-output"
-                      ? "structured-output"
-                      : undefined,
+                  event.message.customType === "subagents:turn-budget" ? "turn-budget" : undefined,
               };
-        this.rows.push(immutable(row));
+        this.rows.push(row);
         changed = true;
       }
     }
@@ -259,12 +183,13 @@ export class TranscriptProjection {
       event.message.role === "assistant"
     ) {
       this.assistantId ??= `assistant-${++this.sequence}`;
-      const row: TranscriptRow = immutable({
+      // The SDK mutates streaming messages in place, so keep a copy per event.
+      const row: TranscriptRow = {
         id: this.assistantId,
         kind: "assistant",
         message: structuredClone(event.message),
         streaming: event.type !== "message_end",
-      });
+      };
       const index = this.rows.findIndex((item) => item.id === row.id);
       if (index < 0) this.rows.push(row);
       else this.rows[index] = row;
@@ -302,6 +227,19 @@ export function toolActivity(name: string, value: unknown): string {
     bash: "Running",
   };
   return `${verbs[name] ?? `Using ${name}`}${safe ? ` ${safe}` : ""}`;
+}
+
+/**
+ * A title for an agent without a description: the first sentence of the first non-empty line
+ * of its prompt. `taskTitle` then shortens it for display.
+ */
+export function promptTitle(prompt: string): string {
+  const line =
+    prompt
+      .split("\n")
+      .find((text) => text.trim())
+      ?.trim() ?? "";
+  return /^(.+?[.!?])(?:\s|$)/.exec(line)?.[1] ?? line;
 }
 
 export function taskTitle(view: Pick<AgentView, "task">): string {

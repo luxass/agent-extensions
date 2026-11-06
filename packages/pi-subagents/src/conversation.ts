@@ -1,9 +1,4 @@
-import {
-  ToolExecutionComponent,
-  getMarkdownTheme,
-  type Theme,
-  type ToolRenderers,
-} from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme, type Theme } from "@earendil-works/pi-coding-agent";
 import {
   Markdown,
   ScrollView,
@@ -17,13 +12,8 @@ import {
 
 import type { Settings } from "./agents.ts";
 import { outputPreview, type OutputPreview } from "./render.ts";
-import {
-  contentText,
-  isSettled,
-  toolActivity,
-  type AgentView,
-  type TranscriptRow,
-} from "./transcript.ts";
+import { contentText, toolActivity } from "./transcript.ts";
+import { isSettled, type AgentView, type TranscriptRow } from "./types.ts";
 
 /**
  * Retain message bodies by row identity and label their recorded speaker.
@@ -51,7 +41,6 @@ export class ConversationPane {
 
   constructor(
     private readonly tui: TUI,
-    private readonly cwd: string,
     private readonly theme: Theme,
   ) {}
 
@@ -140,44 +129,14 @@ export class ConversationPane {
         : new Markdown(text, 0, 0, getMarkdownTheme());
     }
     if (!row.text.trim() && !row.pending) return undefined;
-    // Renderer-only definitions avoid both generic JSON blocks and native tool timers.
-    const renderers: ToolRenderers = {
-      renderShell: "self",
-
-      renderCall: (_args, theme, context) =>
-        new Text(
-          theme.fg(
-            "dim",
-            context.isPartial
-              ? toolActivity(row.name, row.args)
-              : `${row.name} · ${context.isError ? "Failed" : "Finished"}`,
-          ),
-          0,
-          0,
-        ),
-
-      renderResult: (result, _options, theme, context) =>
-        new Text(
-          theme.fg(context.isError ? "error" : "toolOutput", contentText(result.content)),
-          0,
-          0,
-        ),
-    };
-    const component = new ToolExecutionComponent(
-      row.name,
-      row.id,
-      row.args,
-      { showImages: false, outputPad: 0 },
-      renderers,
-      this.tui,
-      this.cwd,
-    );
-    component.setArgsComplete();
-    component.updateResult(
-      { content: [{ type: "text", text: row.text }], isError: row.error },
-      row.pending,
-    );
-    return component;
+    // A status line and the output. Full arguments are in Details.
+    const status = row.pending
+      ? toolActivity(row.name, row.args)
+      : `${row.name} · ${row.error ? "Failed" : "Finished"}`;
+    const output = row.text
+      .split("\n")
+      .map((line) => this.theme.fg(row.error ? "error" : "toolOutput", line));
+    return new Text([this.theme.fg("dim", status), ...(row.text ? output : [])].join("\n"), 0, 0);
   }
 
   render(
@@ -217,12 +176,7 @@ export class ConversationPane {
         live.add(row.id);
         const start = lines.length;
         const notice = row.kind === "extension" && !!row.notice;
-        const title =
-          row.kind === "extension" && row.notice
-            ? row.notice === "turn-budget"
-              ? "Final-turn reminder"
-              : "Structured output request"
-            : "";
+        const title = notice ? "Final-turn reminder" : "";
         if (notice && !this.expandedNotices.has(row.id)) {
           lines.push(
             this.theme.fg("muted", truncateToWidth(`▸ Extension · ${title}  [n expand]`, width)),
@@ -240,12 +194,6 @@ export class ConversationPane {
             contentText(row.message.content).trim()
           ) {
             entry.component.setText(contentText(row.message.content).trim());
-            entry = { row, component: entry.component, width: 0, lines: [] };
-          } else if (entry?.component instanceof ToolExecutionComponent && row.kind === "tool") {
-            entry.component.updateResult(
-              { content: [{ type: "text", text: row.text }], isError: row.error },
-              row.pending,
-            );
             entry = { row, component: entry.component, width: 0, lines: [] };
           } else {
             const component = this.component(row);

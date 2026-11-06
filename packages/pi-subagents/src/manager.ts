@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 
 import {
   getAgentDir,
@@ -8,54 +8,34 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Value } from "typebox/value";
 
+import { matches } from "./agents.ts";
 import { Attempt } from "./attempts.ts";
 import type { Catalog } from "./catalog.ts";
-import { withStateLock } from "./io.ts";
+import { emit, subject } from "./events.ts";
+import type { SpawnRequest } from "./tools.ts";
+import { promptTitle, taskTitle } from "./transcript.ts";
 import {
   emptyUsage,
-  hasReportedUsage,
-  matches,
-  rejectWorktree,
-  spawnParameters,
-  type AgentService,
-  type SpawnRequest,
-  type Usage,
-} from "./tools.ts";
-import { immutable as freeze, isSettled, taskTitle, type AgentView } from "./transcript.ts";
-
-export type AttemptState =
-  | "queued"
-  | "starting"
-  | "running"
-  | "settling"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export interface Owner {
-  readonly id: string;
-  readonly attemptId?: string;
-}
+  isSettled,
+  sameOwner,
+  waitingForCapacity,
+  type AgentView,
+  type Owner,
+} from "./types.ts";
 
 interface Agent {
   id: string;
   attempts: Attempt[];
 }
 
-export class AgentManager implements AgentService {
+export class AgentManager {
   readonly root: Owner;
   readonly directory: string;
   private agents = new Map<string, Agent>();
   readonly attempts = new Map<string, Attempt>();
   private listeners = new Set<() => void>();
   private tasks = new Set<Promise<void>>();
-  readonly toolRoots = new Map<string, string>();
-  private usageReservations = new Map<
-    string,
-    { toolCallId: string; rootId: string; reported: boolean }
-  >();
   readonly pending = new Set<Attempt>();
   readonly active = new Set<Attempt>();
   private capacity = "";
@@ -74,7 +54,7 @@ export class AgentManager implements AgentService {
     public context: ExtensionContext,
     readonly catalog: Catalog,
   ) {
-    this.root = freeze({ id: context.sessionManager.getSessionId() });
+    this.root = { id: context.sessionManager.getSessionId() };
     this.directory = join(getAgentDir(), "subagents", this.root.id, "v1");
   }
 
@@ -109,15 +89,13 @@ export class AgentManager implements AgentService {
   }
 
   list(): readonly AgentView[] {
-    return Object.freeze(
-      [...this.agents.values()].flatMap((agent) => agent.attempts.at(-1)?.view ?? []),
-    );
+    return [...this.agents.values()].flatMap((agent) => agent.attempts.at(-1)?.view ?? []);
   }
 
   get(id: string, owner?: Owner): AgentView {
     const candidates = this.list().filter(
       (view) =>
-        (!owner || (view.owner.id === owner.id && view.owner.attemptId === owner.attemptId)) &&
+        (!owner || sameOwner(view.owner, owner)) &&
         (view.id === id || view.name.toLowerCase() === id.replace(/^@/, "").toLowerCase()),
     );
     if (candidates.length !== 1 || !candidates[0])
@@ -131,24 +109,19 @@ export class AgentManager implements AgentService {
   }
 
   history(id: string): readonly AgentView[] {
-    return Object.freeze((this.agents.get(id)?.attempts ?? []).map((attempt) => attempt.view));
+    return (this.agents.get(id)?.attempts ?? []).map((attempt) => attempt.view);
   }
 
   private entry(id: string, attemptId?: string, owner?: Owner): Attempt {
     const view = this.get(id, owner);
     const attempt = this.attempts.get(attemptId ?? view.attemptId);
-    if (
-      !attempt ||
-      attempt.view.id !== view.id ||
-      (owner &&
-        (attempt.view.owner.id !== owner.id || attempt.view.owner.attemptId !== owner.attemptId))
-    )
+    if (!attempt || attempt.view.id !== view.id || (owner && !sameOwner(attempt.view.owner, owner)))
       throw new Error("That attempt is unavailable to this caller.");
     return attempt;
   }
 
   private authorize(owner: Owner): Attempt | undefined {
-    if (owner.id === this.root.id && owner.attemptId === undefined) return undefined;
+    if (sameOwner(owner, this.root)) return undefined;
     const parent = owner.attemptId ? this.attempts.get(owner.attemptId) : undefined;
     if (
       !parent ||
@@ -160,24 +133,11 @@ export class AgentManager implements AgentService {
     return parent;
   }
 
-  async spawn(
-    input: SpawnRequest,
-    owner: Owner = this.root,
-    restart = false,
-    prepareMention = false,
-  ): Promise<AgentView> {
-    rejectWorktree(input);
+  async spawn(input: SpawnRequest, owner: Owner = this.root, restart = false): Promise<AgentView> {
     if (this.closing) throw new Error("Subagents are shutting down.");
-    if (input.schedule) throw new Error("Scheduling is not supported. No job was created.");
-    if (
-      !Value.Check(spawnParameters, input) ||
-      !input.prompt.trim() ||
-      input.prompt.length > 2_000_000
-    )
-      throw new Error("A valid, nonempty agent request is required (maximum 2 MB).");
-    if ("schema" in input && input.schema !== undefined)
-      throw new Error("Structured output is no longer supported. No agent was started.");
-    if (input.cwd && !isAbsolute(input.cwd)) throw new Error("Agent cwd must be absolute.");
+    // Pi validates tool arguments against the schema; this guards the UI and mention callers.
+    if (!input.prompt.trim() || input.prompt.length > 2_000_000)
+      throw new Error("A nonempty agent prompt is required (maximum 2 MB).");
     await this.catalog.reload();
     if (this.closing) throw new Error("Subagents are shutting down.");
     const parent = this.authorize(owner);
@@ -213,7 +173,7 @@ export class AgentManager implements AgentService {
       const base = name;
       while (
         this.list().some(
-          (view) => view.owner.id === owner.id && view.name.toLowerCase() === name.toLowerCase(),
+          (view) => sameOwner(view.owner, owner) && view.name.toLowerCase() === name.toLowerCase(),
         )
       )
         name = `${base}-${suffix++}`;
@@ -222,7 +182,7 @@ export class AgentManager implements AgentService {
       !previous &&
       input.name &&
       this.list().some(
-        (view) => view.owner.id === owner.id && view.name.toLowerCase() === name.toLowerCase(),
+        (view) => sameOwner(view.owner, owner) && view.name.toLowerCase() === name.toLowerCase(),
       )
     )
       throw new Error("That handle exists. Resume it or choose a new name.");
@@ -239,10 +199,9 @@ export class AgentManager implements AgentService {
         definition.maxTurns ??
         this.catalog.settings.maxTurns,
       isolated: input.isolated ?? saved?.request.isolated,
-      cwd: input.cwd ?? saved?.request.cwd,
     });
     const attemptId = randomUUID();
-    const view: AgentView = freeze({
+    const view: AgentView = {
       id,
       attemptId,
       attemptNumber: (this.agents.get(id)?.attempts.length ?? 0) + 1,
@@ -252,11 +211,12 @@ export class AgentManager implements AgentService {
       agentType: definition.name,
       displayName: definition.displayName ?? definition.name,
       task: taskTitle({
-        task: input.description?.trim() || input.prompt.split("\n")[0] || definition.description,
+        task: input.description?.trim() || promptTitle(input.prompt) || definition.description,
       }),
       prompt: input.prompt,
       state: "queued",
-      activity: "Waiting for capacity",
+      // Shown as Starting until the scheduler finds every slot taken.
+      activity: "Starting",
       background: input.run_in_background ?? !parent,
       createdAt: Date.now(),
       result: "",
@@ -269,16 +229,18 @@ export class AgentManager implements AgentService {
       definition,
       transcript: [],
       transcriptLoaded: true,
-    });
+    };
     const attempt = new Attempt(this, view, request);
     attempt.instructions = previous && !restart ? previous.instructions : undefined;
-    attempt.prepareMention = prepareMention;
     const agent = this.agents.get(id) ?? { id, attempts: [] };
     agent.attempts.push(attempt);
     this.agents.set(id, agent);
     this.attempts.set(attemptId, attempt);
     parent?.children.add(attemptId);
-    this.pi.events.emit("subagents:created", { id, attemptId, parentId: owner.id });
+    // Mark the start on the current branch, so delivery knows which branches asked for it.
+    if (sameOwner(owner, this.root))
+      this.pi.appendEntry("subagent-start", { version: 1, attemptId });
+    emit(this.pi, "subagents:created", subject(view));
     this.changed();
     try {
       await attempt.persist("queued");
@@ -314,7 +276,12 @@ export class AgentManager implements AgentService {
     this.pumping = true;
     try {
       for (const attempt of this.pending) {
-        if (attempt.view.state !== "queued" || attempt.finalizing || !this.room(attempt)) continue;
+        if (attempt.view.state !== "queued" || attempt.finalizing) continue;
+        if (!this.room(attempt)) {
+          if (attempt.view.activity !== waitingForCapacity)
+            attempt.publish({ activity: waitingForCapacity });
+          continue;
+        }
         this.pending.delete(attempt);
         attempt.permit = this.pool(attempt);
         this.active.add(attempt);
@@ -323,9 +290,8 @@ export class AgentManager implements AgentService {
           activity: "Starting session",
           startedAt: Date.now(),
         });
-        const task = withStateLock(join(this.directory, "agents", attempt.view.id), () =>
-          attempt.run(),
-        )
+        const task = attempt
+          .run()
           .catch((error: unknown) => attempt.finalize(error))
           .finally(() => {
             this.tasks.delete(task);
@@ -377,10 +343,7 @@ export class AgentManager implements AgentService {
     if (attempt.view.state !== "running" || !attempt.driver)
       throw new Error("This attempt is not running.");
     await attempt.driver.steer(message);
-    this.pi.events.emit("subagents:steered", {
-      id: attempt.view.id,
-      attemptId: attempt.view.attemptId,
-    });
+    emit(this.pi, "subagents:steered", subject(attempt.view));
   }
 
   handoff(id: string, attemptId: string): boolean {
@@ -392,54 +355,15 @@ export class AgentManager implements AgentService {
     return true;
   }
 
-  consume(id: string, attemptId: string, owner: Owner, toolCallId: string): Usage | undefined {
+  /** Record that the caller received this settled result, so no completion message follows. */
+  consume(id: string, attemptId: string, owner: Owner): void {
     const attempt = this.entry(id, attemptId, owner);
     if (!isSettled(attempt.view.state))
       throw new Error("A running or settling attempt has no final result.");
-    if (!attempt.consumed) {
-      this.pi.appendEntry("subagent-receipt", { version: 1, kind: "collection", attemptId });
-      attempt.consumed = true;
-      attempt.saveReceipt();
-    }
-    if (
-      owner.id !== this.root.id ||
-      owner.attemptId ||
-      attempt.usageReported ||
-      this.usageReservations.has(attemptId)
-    )
-      return undefined;
-    if (hasReportedUsage(this.context, attemptId)) {
-      attempt.usageReported = true;
-      return undefined;
-    }
-    this.usageReservations.set(attemptId, {
-      toolCallId,
-      rootId: this.toolRoots.get(toolCallId) ?? toolCallId,
-      reported: false,
-    });
-    return { ...attempt.view.usage };
-  }
-
-  captureUsage(toolCallId: string): void {
-    for (const [attemptId, reservation] of this.usageReservations) {
-      if (reservation.toolCallId !== toolCallId || reservation.reported) continue;
-      this.pi.appendEntry("subagent-receipt", {
-        version: 1,
-        kind: "usage",
-        attemptId,
-        toolCallId: reservation.rootId,
-      });
-      reservation.reported = true;
-    }
-  }
-
-  commitUsage(toolCallId: string, accounted: boolean): void {
-    for (const [attemptId, reservation] of this.usageReservations) {
-      if (reservation.rootId !== toolCallId) continue;
-      const attempt = this.attempts.get(attemptId);
-      if (attempt && reservation.reported && accounted) attempt.usageReported = true;
-      this.usageReservations.delete(attemptId);
-    }
+    if (attempt.consumed) return;
+    this.pi.appendEntry("subagent-receipt", { version: 1, attemptId });
+    attempt.consumed = true;
+    attempt.saveReceipt();
   }
 
   waiting(owner: Owner, attemptId: string, active: boolean): void {
@@ -463,17 +387,26 @@ export class AgentManager implements AgentService {
     }
   }
 
-  undelivered(): readonly AgentView[] {
+  /** Reopen delivery after /tree navigation to a branch that never received this result. */
+  markUndelivered(attemptId: string): void {
+    const attempt = this.attempts.get(attemptId);
+    if (attempt?.consumed) {
+      attempt.consumed = false;
+      attempt.saveReceipt();
+    }
+  }
+
+  /** Settled top-level background attempts, including older attempts of resumed agents. */
+  finishedBackgroundAttempts(): readonly AgentView[] {
     return [...this.attempts.values()]
       .map((attempt) => attempt.view)
       .filter(
-        (view) =>
-          view.background &&
-          view.owner.id === this.root.id &&
-          !view.owner.attemptId &&
-          isSettled(view.state) &&
-          !this.isConsumed(view.attemptId),
+        (view) => view.background && sameOwner(view.owner, this.root) && isSettled(view.state),
       );
+  }
+
+  undelivered(): readonly AgentView[] {
+    return this.finishedBackgroundAttempts().filter((view) => !this.isConsumed(view.attemptId));
   }
 
   deliveryMode(attemptId: string): "individual" | "group" {
@@ -483,7 +416,7 @@ export class AgentManager implements AgentService {
   joinedPending(): boolean {
     return [...this.attempts.values()].some(
       (attempt) =>
-        attempt.view.owner.id === this.root.id &&
+        sameOwner(attempt.view.owner, this.root) &&
         attempt.request.join === "group" &&
         !isSettled(attempt.view.state),
     );
@@ -500,7 +433,7 @@ export class AgentManager implements AgentService {
   async mention(name: string, prompt: string): Promise<AgentView> {
     const matches = this.list().filter(
       (view) =>
-        view.owner.id === this.root.id &&
+        sameOwner(view.owner, this.root) &&
         (view.id === name || view.name.toLowerCase() === name.toLowerCase()),
     );
     if (matches.length > 1) throw new Error("Use the agent ID to resolve this ambiguous mention.");
@@ -512,12 +445,11 @@ export class AgentManager implements AgentService {
       }
       return this.spawn({ prompt, resume: prior.id });
     }
-    return this.spawn(
-      { prompt, subagent_type: name },
-      this.root,
-      false,
-      this.catalog.settings.mentionMode === "clone",
-    );
+    return this.spawn({
+      prompt,
+      subagent_type: name,
+      inherit_context: this.catalog.settings.mentionContext || undefined,
+    });
   }
 
   insertRestored(attempt: Attempt): void {

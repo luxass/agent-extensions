@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
 
 import {
   createAgentSession,
@@ -24,16 +23,26 @@ import {
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-import type { AgentDefinition } from "./agents.ts";
+import { matches, type AgentDefinition } from "./agents.ts";
 import type { Catalog } from "./catalog.ts";
-import {
-  matches,
-  usageDelta,
-  usageSnapshot,
-  type SpawnRequest,
-  type Thinking,
-  type Usage,
-} from "./tools.ts";
+import { emit } from "./events.ts";
+import type { SpawnRequest } from "./tools.ts";
+import type { Thinking, Usage } from "./types.ts";
+
+function usageSnapshot(session: AgentSession): Usage {
+  const stats = session.getSessionStats();
+  return { ...stats.tokens, cost: stats.cost };
+}
+
+function usageDelta(now: Usage, baseline: Usage): Usage {
+  return {
+    input: Math.max(0, now.input - baseline.input),
+    output: Math.max(0, now.output - baseline.output),
+    cacheRead: Math.max(0, now.cacheRead - baseline.cacheRead),
+    cacheWrite: Math.max(0, now.cacheWrite - baseline.cacheWrite),
+    cost: Math.max(0, now.cost - baseline.cost),
+  };
+}
 
 /** Child loader discovery must not recursively register another root orchestrator. */
 export const childSessionContext = new AsyncLocalStorage<boolean>();
@@ -179,7 +188,6 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
     const permitted = (name: string): boolean => {
       if (signal.aborted || disposed || budgetReached) return false;
       if (matches(name, definition.disallowedTools)) return false;
-      if (name === "SubagentWorkflow") return false;
       if (["Agent", "get_subagent_result", "steer_subagent", "list_subagent_models"].includes(name))
         return (
           definition.allowedSubagents.length > 0 &&
@@ -190,8 +198,7 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
 
     try {
       signal.throwIfAborted();
-      const cwd = request.cwd ? resolve(request.cwd) : ctx.cwd;
-      if (!(await wait(stat(cwd))).isDirectory()) throw new Error("Agent cwd is not a directory.");
+      const cwd = ctx.cwd;
       const modelRuntime = await wait(ModelRuntime.create());
       for (const providerId of ctx.modelRegistry.getRegisteredProviderIds()) {
         const native = ctx.modelRegistry.getRegisteredNativeProvider(providerId);
@@ -227,7 +234,7 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
         if (request.model)
           throw new Error("Requested model is outside the parent's enabled model scope.");
         if (definition.model)
-          pi.events.emit("subagents:warning", {
+          emit(pi, "subagents:warning", {
             error:
               "The agent definition pins a model outside the parent's enabled scope. Its explicit definition is authoritative.",
           });
@@ -243,6 +250,7 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
       const scope: ExtensionFactory = (extension) => {
         extension.on("turn_end", (state, ctx) => hooks.boundary?.(state, ctx));
         extension.on("agent_before_settle", (state, ctx) => hooks.boundary?.(state, ctx));
+        // The tool_call hook also sees nested calls (codemode), unlike agent.beforeToolCall.
         extension.on("tool_call", (event) =>
           permitted(event.toolName)
             ? undefined
@@ -270,18 +278,11 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
       const parentSettings = SettingsManager.create(ctx.cwd, getAgentDir(), {
         projectTrusted: ctx.isProjectTrusted(),
       });
-      const [targetPath, parentPath] = await wait(Promise.all([realpath(cwd), realpath(ctx.cwd)]));
-      const sameProject = targetPath === parentPath;
       const settingsManager = SettingsManager.inMemory(parentSettings.getSettings(), {
-        projectTrusted: ctx.isProjectTrusted() && sameProject,
+        projectTrusted: ctx.isProjectTrusted(),
       });
-      if (!sameProject)
-        pi.events.emit("subagents:warning", {
-          error:
-            "Alternate cwd uses parent settings. Target project configuration is not trusted; automatic project-local MCP discovery is disabled there.",
-        });
       const loader = new DefaultResourceLoader({
-        cwd: ctx.cwd,
+        cwd,
         agentDir: getAgentDir(),
         settingsManager: parentSettings,
         noExtensions,
@@ -315,10 +316,7 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
 
         extensionsOverride: (base) => ({
           ...base,
-          extensions: base.extensions.filter(
-            (extension) =>
-              !extension.tools.has("Agent") && !extension.tools.has("SubagentWorkflow"),
-          ),
+          extensions: base.extensions.filter((extension) => !extension.tools.has("Agent")),
         }),
       });
       await wait(loader.reload());
@@ -364,7 +362,7 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
         resourceLoader: loader,
         settingsManager,
         sessionManager,
-        excludeTools: [...definition.disallowedTools, "SubagentWorkflow"],
+        excludeTools: [...definition.disallowedTools],
         tools: definition.tools
           ? [...definition.tools, ...customTools.map((tool) => tool.name)]
           : undefined,
@@ -376,12 +374,6 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
       const created = await wait(creating);
       signal.throwIfAborted();
       baseline = usageSnapshot(created);
-      const previous = created.agent.beforeToolCall;
-      created.agent.beforeToolCall = async (context, toolSignal) => {
-        if (!permitted(context.toolCall.name))
-          return { block: true, reason: "This tool is not permitted for this agent." };
-        return previous?.(context, toolSignal);
-      };
       unsubscribe = created.subscribe((event) => {
         if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta")
           text += event.assistantMessageEvent.delta;

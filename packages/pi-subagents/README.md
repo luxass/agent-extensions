@@ -50,7 +50,9 @@ The collapsed inline result has at most two lines. Expand it with Pi's tool-resu
 
 The model-facing tools are `Agent`, `get_subagent_result`, `steer_subagent`, and `list_subagent_models`. Collection consumes that attempt's pending notification. Its receipt survives reloads, including collection through codemode. While Pi is busy, completions wait until its current model response and tool calls finish. An agent keeps its stable ID across resumes. Each execution has a separate attempt ID, cancellation control, transcript, and usage record. Foreground calls own their returned result. Background and handed-off calls send a completion message. `join: "group"` batches background completions until the joined work finishes or the 30-second delivery window expires.
 
-Mentions accept text only. `@handle task` steers or resumes an existing agent. `@Explore task` starts that type when no matching handle exists. `@main text` sends text to the main conversation. In `clone` mode, a restricted copy of the main conversation prepares a self-contained task. `direct` mode sends the supplied task without that preparation. The preparation uses the same attempt's cancellation and capacity. Its model usage counts toward that attempt.
+Delivery follows the current branch. After `/tree` navigation, a branch that started a background agent but does not contain its result receives the completion message. A branch that already has the result, or that never started the agent, receives nothing.
+
+Mentions accept text only. `@handle task` steers a running agent or resumes a finished one. `@Explore task` starts an agent of that type when no handle matches. `@main text` sends text to the main conversation. A new agent started by a mention receives only your text. Turn on `mentionContext` to also give it a copy of the main conversation. The agent then reads the whole conversation, which uses more tokens.
 
 ## Models
 
@@ -96,7 +98,7 @@ List fields (`tools`, `disallowedTools`, `allowed_subagents`, and `skills`) requ
 
 Nested delegation is off unless the definition grants it. `allowed_subagents` accepts type names and `*` patterns. The tool allowlist must also permit the delegation tools. Nested calls wait in the foreground by default. Explicit background children must finish before their owning attempt ends. Parent completion, failure, or stop cancels unfinished descendants.
 
-Definitions support model and thinking selection, allowed and denied tools, preloaded skills, memory scopes, turn limits, and extension isolation. `display_name` changes the visible label, not the lookup name. `prompt_mode: replace` replaces the base prompt. The default appends the definition's instructions. Unknown fields and unsupported worktree settings produce errors rather than silent fallback.
+Definitions support model and thinking selection, allowed and denied tools, preloaded skills, memory scopes, turn limits, and extension isolation. `display_name` changes the visible label, not the lookup name. `prompt_mode: replace` replaces the base prompt. The default appends the definition's instructions. Unknown fields produce errors. An unknown agent type is an error. Pi does not start a different agent instead.
 
 Resume preserves the saved definition, preloaded skills, project instruction files, and system-prompt sources. Memory remains mutable reference data. Current ownership, project trust, disabled types, tool availability, and model scope still apply. A removed or disabled type cannot resume. Restart with the current definition is a separate action. A missing SDK session file does not erase the saved answer. Background delivery receipts persist with the attempt. On restoration, Pi history determines whether a completion still needs delivery.
 
@@ -113,7 +115,7 @@ Settings load from `<agentDir>/subagents.json` and trusted `.pi/subagents.json`.
 | `maxTurns`                    | `0`            | Default turn limit. Zero means unlimited.                                 |
 | `widgetMode`                  | `"background"` | Active status line: `all`, `background`, or `off`.                        |
 | `viewerMarkdown`              | `"assistant"`  | Conversation Markdown: `off`, `assistant`, or `all`.                      |
-| `mentionMode`                 | `"clone"`      | Conversation-based task preparation or direct dispatch.                   |
+| `mentionContext`              | `false`        | A new agent started by a mention also reads the main conversation.        |
 
 Turn limits use the same rule in configuration, tool calls, and saved records: whole numbers from `0` through `Number.MAX_SAFE_INTEGER`. Zero means unlimited. Limits above 10,000 remain valid after reload.
 
@@ -143,12 +145,50 @@ Package definitions are read-only. Eject copies a definition into a local file w
 
 Use `packageAgents` in `subagents.json` to allow all packages, disable package agents, or allow specific package names. The supervisor exposes this control in its configuration menu.
 
+## Events
+
+Other extensions can follow agents through `pi.events`:
+
+```ts
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  pi.events.on("subagents:completed", (event) => {
+    console.log(event);
+  });
+}
+```
+
+Every attempt event contains these fields:
+
+| Field       | Meaning                                                                   |
+| ----------- | ------------------------------------------------------------------------- |
+| `id`        | Stable agent ID. It stays the same across resumes.                        |
+| `attemptId` | ID of this execution. Each resume or restart creates a new one.           |
+| `name`      | Handle, such as `reviewer` or `explore-2`.                                |
+| `agentType` | Definition name, such as `Explore`.                                       |
+| `owner`     | `{ id }` for the main session, or `{ id, attemptId }` for a parent agent. |
+
+| Event                 | Sent when                                     | Extra fields                                           |
+| --------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `subagents:created`   | An attempt is created and waits for capacity. | None.                                                  |
+| `subagents:started`   | The child session starts working.             | None.                                                  |
+| `subagents:steered`   | Instructions are queued for a running agent.  | None.                                                  |
+| `subagents:completed` | The attempt finishes successfully.            | `state: "completed"`, `result`.                        |
+| `subagents:failed`    | The attempt fails or is stopped.              | `state: "failed"` or `"cancelled"`, `result`, `error`. |
+| `subagents:usage`     | The attempt settles.                          | `usage`, including nested children.                    |
+| `subagents:warning`   | A warning applies, such as model scope.       | Only `error`. It has no attempt fields.                |
+
+The payload types are in [`src/events.ts`](src/events.ts).
+
 ## Supported scope
 
-Workflows, scheduling, and RPC are not supported. Schedule requests fail without creating a job. Existing saved data for these features remains untouched.
+Workflows, scheduling, RPC, and worktrees are not supported.
 
-Children share the checkout. Concurrent edits can conflict. Worktrees, calendar cron, and Herdr integration are not implemented.
+Children share the checkout. Concurrent edits can conflict.
 
-Pi 1.4 does not expose an extension API for recording background usage directly. Automatically delivered results do not add child usage to main-session totals until you collect them. Use `get_subagent_result` to record that usage. Repeated collection does not count the same usage again. The supervisor still shows per-agent usage.
+Only foreground results add child usage to the main-session totals. Background usage appears in the supervisor, in Details, and in the `subagents:usage` event. Collecting a background result does not add its usage to the main totals.
+
+Settings and definition saves use atomic writes without a cross-process lock. If two Pi processes save the same file at the same moment, the last save wins.
 
 Parallel background delegation through codemode and definition saves in all four global/project folders were checked in Pi. See the [manual verification guide](https://github.com/luxass/agent-extensions/blob/main/packages/pi-subagents/docs/manual-verification.md) for the remaining runtime checks.

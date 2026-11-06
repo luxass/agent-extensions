@@ -17,11 +17,8 @@ import {
   agentPrompt,
   builtins,
   defaults,
-  freezeAgent,
-  freezeSettings,
   parseAgent,
   serializeAgent,
-  UnsupportedWorktreeError,
   validateSettings,
   type AgentDefinition,
   type Settings,
@@ -34,8 +31,8 @@ import {
   readObject,
   readText,
   safeDestination,
+  maxResourceBytes,
   safeName,
-  withStateLock,
 } from "./io.ts";
 
 export interface Catalog {
@@ -61,7 +58,7 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
   const universalDir = join(homedir(), ".agents");
   const globalSettingsPath = join(agentDir, "subagents.json");
   const projectSettingsPath = join(cwd, ".pi", "subagents.json");
-  let settings = freezeSettings({ ...defaults, disabledAgents: [] });
+  let settings: Settings = { ...defaults, disabledAgents: [] };
   let definitions: readonly AgentDefinition[] = [];
   let lookup = new Map<string, AgentDefinition>();
   let intrinsic = new Map<string, AgentDefinition>();
@@ -87,7 +84,6 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     try {
       return validateSettings(await readObject(path));
     } catch (error) {
-      if (error instanceof UnsupportedWorktreeError) throw error;
       warn(`${path}: ${String(error)} File left unchanged; repair or move it before saving.`);
       return {};
     }
@@ -98,7 +94,7 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     const trusted = ctx.isProjectTrusted();
     const global = await settingsLayer(globalSettingsPath);
     const project = trusted ? await settingsLayer(projectSettingsPath) : {};
-    const nextSettings = freezeSettings({ ...defaults, disabledAgents: [], ...global, ...project });
+    const nextSettings: Settings = { ...defaults, disabledAgents: [], ...global, ...project };
     const next = new Map<string, AgentDefinition>();
     for (const definition of builtins()) next.set(key(definition.name), definition);
     const packaged = await packageResources(cwd, agentDir, trusted, nextSettings, warn);
@@ -121,7 +117,6 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
           );
         next.set(id, definition);
       } catch (error) {
-        if (error instanceof UnsupportedWorktreeError) throw error;
         warn(`${resource.file}: ${String(error)}`);
       }
     }
@@ -144,7 +139,6 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
         for (const file of await resourceFiles(agentRoot, [".md"], warn))
           await addAgent({ file, root: agentRoot }, root.source);
       } catch (error) {
-        if (error instanceof UnsupportedWorktreeError) throw error;
         warn(`${agentRoot}: ${String(error)}`);
       }
     }
@@ -194,18 +188,13 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
       warn(`Skill${diagnostic.path ? ` ${diagnostic.path}` : ""}: ${diagnostic.message}`);
     const disabled = new Set(nextSettings.disabledAgents.map(key));
     const nextLookup = new Map<string, AgentDefinition>();
-    for (const [id, definition] of next) {
-      freezeAgent(definition);
-      nextLookup.set(
-        id,
-        freezeAgent({ ...definition, enabled: definition.enabled && !disabled.has(id) }),
-      );
-    }
+    for (const [id, definition] of next)
+      nextLookup.set(id, { ...definition, enabled: definition.enabled && !disabled.has(id) });
     settings = nextSettings;
     intrinsic = next;
     lookup = nextLookup;
-    definitions = Object.freeze(
-      [...lookup.values()].toSorted((a, b) => key(a.name).localeCompare(key(b.name), "en")),
+    definitions = [...lookup.values()].toSorted((a, b) =>
+      key(a.name).localeCompare(key(b.name), "en"),
     );
     skills = nextSkills;
     if (ctx.hasUI && warnings.length > 0) {
@@ -225,29 +214,19 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     const path = ctx.isProjectTrusted() ? projectSettingsPath : globalSettingsPath;
     const root = ctx.isProjectTrusted() ? cwd : agentDir;
     await safeDestination(root, path);
-    try {
-      await withStateLock(path, async () => {
-        const current = validateSettings(await readObject(path));
-        let update = validated;
-        if (toggleName !== undefined) {
-          const global =
-            path === globalSettingsPath
-              ? {}
-              : validateSettings(await readObject(globalSettingsPath));
-          const effective = { ...defaults, ...global, ...current };
-          const disabled = new Set(effective.disabledAgents.map(key));
-          if (forceEnable || disabled.has(toggleName)) disabled.delete(toggleName);
-          else disabled.add(toggleName);
-          update = { ...validated, disabledAgents: [...disabled].toSorted() };
-        }
-        // Never replace malformed or unsupported existing state with defaults.
-        validateSettings({ ...current, ...update });
-        await atomicWrite(path, `${JSON.stringify({ ...current, ...update }, null, 2)}\n`);
-      });
-    } catch (error) {
-      warn(`Settings not saved: ${String(error)}`);
-      throw error;
+    // Never replace a malformed existing file with defaults: validation throws first.
+    const current = validateSettings(await readObject(path));
+    let update = validated;
+    if (toggleName !== undefined) {
+      const global =
+        path === globalSettingsPath ? {} : validateSettings(await readObject(globalSettingsPath));
+      const effective = { ...defaults, ...global, ...current };
+      const disabled = new Set(effective.disabledAgents.map(key));
+      if (forceEnable || disabled.has(toggleName)) disabled.delete(toggleName);
+      else disabled.add(toggleName);
+      update = { ...validated, disabledAgents: [...disabled].toSorted() };
     }
+    await atomicWrite(path, `${JSON.stringify({ ...current, ...update }, null, 2)}\n`);
     await reload();
   }
 
@@ -261,24 +240,22 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
       : join(agentDir, "agents");
     const path = join(directory, `${safeName(definition.name)}.md`);
     await safeDestination(root, path);
-    await withStateLock(path, async () => {
-      try {
-        await lstat(path);
-        if (!enableExisting) throw new Error(`Refusing to overwrite ${path}.`);
-        const existing = parseAgent(
-          await readText(path),
-          path,
-          ctx.isProjectTrusted() ? "project" : "user",
-        );
-        if (key(existing.name) !== key(definition.name))
-          throw new Error(`Refusing to overwrite unrelated agent ${path}.`);
-        // Enabling an explicitly disabled local definition is a targeted config change.
-        definition = { ...existing, enabled: true };
-      } catch (error) {
-        if (!isMissing(error)) throw error;
-      }
-      await atomicWrite(path, serializeAgent(definition));
-    });
+    try {
+      await lstat(path);
+      if (!enableExisting) throw new Error(`Refusing to overwrite ${path}.`);
+      const existing = parseAgent(
+        await readText(path),
+        path,
+        ctx.isProjectTrusted() ? "project" : "user",
+      );
+      if (key(existing.name) !== key(definition.name))
+        throw new Error(`Refusing to overwrite unrelated agent ${path}.`);
+      // Enabling an explicitly disabled local definition is a targeted config change.
+      definition = { ...existing, enabled: true };
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+    }
+    await atomicWrite(path, serializeAgent(definition));
     await reload();
     return path;
   }
@@ -289,18 +266,20 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     },
 
     get warnings() {
-      return Object.freeze([...warnings]);
+      return [...warnings];
     },
 
     definitions: () => definitions,
 
     resolve(name) {
-      let definition = lookup.get(key(name));
-      if (!definition && settings.fallbackSubagent === "general-purpose") {
-        definition = lookup.get("general-purpose");
-        if (definition) warn(`Unknown subagent ${JSON.stringify(name)}; using general-purpose.`);
-      }
-      if (!definition) throw new Error(`Unknown subagent: ${name}`);
+      const definition = lookup.get(key(name));
+      if (!definition)
+        throw new Error(
+          `Unknown subagent: ${name}. Available: ${definitions
+            .filter((item) => item.enabled)
+            .map((item) => item.name)
+            .join(", ")}.`,
+        );
       if (!definition.enabled) throw new Error(`Subagent ${definition.name} is disabled.`);
       return definition;
     },
@@ -343,20 +322,22 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
         if (!root) throw new Error(`Unsafe destination: ${path}`);
         await safeDestination(root, path);
         const normalized = parseAgent(serializeAgent(definition), path, user ? "user" : "project");
-        await withStateLock(path, async () => {
-          try {
-            const existing = parseAgent(
-              await checkedFile({ root, file: path }),
-              path,
-              normalized.source,
-            );
-            if (key(existing.name) !== key(normalized.name))
-              throw new Error("Refusing to overwrite another agent's configuration.");
-          } catch (error) {
-            if (!isMissing(error)) throw error;
-          }
-          await atomicWrite(path, serializeAgent(normalized));
-        });
+        const content = serializeAgent(normalized);
+        // Match the load limit, so a successful save can always be reloaded.
+        if (Buffer.byteLength(content) > maxResourceBytes)
+          throw new Error("The definition exceeds 1 MiB and was not saved.");
+        try {
+          const existing = parseAgent(
+            await checkedFile({ root, file: path }),
+            path,
+            normalized.source,
+          );
+          if (key(existing.name) !== key(normalized.name))
+            throw new Error("Refusing to overwrite another agent's configuration.");
+        } catch (error) {
+          if (!isMissing(error)) throw error;
+        }
+        await atomicWrite(path, content);
         await reload();
         return path;
       }),
@@ -428,13 +409,7 @@ const resourceManifest = Type.Object({
   pi: Type.Optional(
     Type.Object({
       subagents: Type.Optional(
-        Type.Object(
-          {
-            agents: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
-            workflows: Type.Optional(Type.Unknown()),
-          },
-          { additionalProperties: false },
-        ),
+        Type.Object({ agents: Type.Optional(Type.Array(Type.String({ minLength: 1 }))) }),
       ),
     }),
   ),

@@ -11,7 +11,20 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 import { checkedFile, isMissing, record, safeDestination, safeName } from "./io.ts";
-import { matches, thinkingSchema, turnLimitSchema, type Thinking } from "./tools.ts";
+import { thinkingSchema, turnLimitSchema, type Thinking } from "./types.ts";
+
+/** Match a tool or agent name against patterns where `*` matches any text. Case-insensitive. */
+export function matches(name: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) =>
+    new RegExp(
+      `^${pattern
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
+      "i",
+    ).test(name),
+  );
+}
 
 export const defaults: Settings = {
   maxConcurrent: 10,
@@ -20,12 +33,10 @@ export const defaults: Settings = {
   maxDepth: 2,
   maxTurns: 0,
   widgetMode: "background",
-  fleetView: true,
   agentMentions: true,
-  mentionMode: "clone",
+  mentionContext: false,
   viewerMarkdown: "assistant",
   scopeModels: false,
-  fallbackSubagent: "general-purpose",
   disabledAgents: [],
   packageAgents: true,
 };
@@ -33,7 +44,7 @@ export const defaults: Settings = {
 const nonnegativeInteger = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const positiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const packagePolicy = Type.Union([Type.Boolean(), Type.Array(Type.String({ pattern: "\\S" }))]);
-const settingsSchema = Type.Object(
+export const settingsSchema = Type.Object(
   {
     maxConcurrent: positiveInteger,
     maxConcurrentForeground: nonnegativeInteger,
@@ -41,67 +52,41 @@ const settingsSchema = Type.Object(
     maxDepth: nonnegativeInteger,
     maxTurns: turnLimitSchema,
     widgetMode: Type.Union([Type.Literal("all"), Type.Literal("background"), Type.Literal("off")]),
-    fleetView: Type.Boolean(),
     agentMentions: Type.Boolean(),
-    mentionMode: Type.Union([Type.Literal("clone"), Type.Literal("direct")]),
+    mentionContext: Type.Boolean(),
     viewerMarkdown: Type.Union([
       Type.Literal("off"),
       Type.Literal("assistant"),
       Type.Literal("all"),
     ]),
-    schedulingEnabled: Type.Optional(Type.Boolean()),
-    workflowsEnabled: Type.Optional(Type.Boolean()),
     scopeModels: Type.Boolean(),
-    fallbackSubagent: Type.Union([Type.Literal("general-purpose"), Type.Literal("none")]),
     disabledAgents: Type.Array(Type.String({ pattern: "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" })),
     packageAgents: packagePolicy,
-    packageWorkflows: Type.Optional(packagePolicy),
   },
   { additionalProperties: false },
 );
 
-const settingsLayer = Type.Partial(settingsSchema);
+// Type.Partial drops additionalProperties, so restate it to reject misspelled settings.
+const settingsLayer = Type.Partial(settingsSchema, { additionalProperties: false });
 
 export type Settings = Static<typeof settingsSchema>;
-
-export class UnsupportedWorktreeError extends Error {}
-
-/**
- * Refuse unsupported isolation before loading configuration or dispatching work.
- * Traversal detects cycles without treating arbitrary data as typed settings.
- */
-export function rejectWorktrees(value: unknown, seen = new Set<object>()): void {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return;
-  if (seen.has(value)) throw new Error("Cyclic configuration is not supported.");
-  seen.add(value);
-  const entries: [string, unknown][] = Object.entries(value);
-  for (const [key, item] of entries) {
-    if (
-      /worktree/i.test(key) ||
-      ((key === "isolation" || key === "isolationMode") && item !== "none" && item !== "off")
-    ) {
-      throw new UnsupportedWorktreeError(
-        `Unsupported ${key}: worktree isolation is not available. Remove this setting; no fallback is applied.`,
-      );
-    }
-    if (typeof item === "string" && /worktree/i.test(item) && /isola/i.test(key)) {
-      throw new UnsupportedWorktreeError(
-        "Worktree isolation is not available; no fallback is applied.",
-      );
-    }
-    rejectWorktrees(item, seen);
-  }
-  seen.delete(value);
-}
 
 /**
  * Validate a settings layer without coercing values or filling absent fields.
  * Global/project precedence and defaults are applied by the catalog.
  */
+/**
+ * TypeBox reports an unknown property twice: once as `schema is false` on the property,
+ * and once as an `additionalProperties` error that names it. Keep only the second.
+ */
+function duplicateUnknownProperty(error: { keyword: string; schemaPath: string }): boolean {
+  return error.keyword === "boolean" && error.schemaPath.endsWith("/additionalProperties");
+}
+
 export function validateSettings(value: unknown): Partial<Settings> {
-  rejectWorktrees(value);
   if (!Value.Check(settingsLayer, value)) {
     const details = Value.Errors(settingsLayer, value)
+      .filter((error) => !duplicateUnknownProperty(error))
       .map((error) => {
         if (error.keyword === "additionalProperties")
           return `Unknown subagent setting: ${error.params.additionalProperties.join(", ")}`;
@@ -111,13 +96,6 @@ export function validateSettings(value: unknown): Partial<Settings> {
     throw new Error(`Invalid subagent settings:\n${details}`);
   }
   return value;
-}
-
-export function freezeSettings(value: Settings): Settings {
-  Object.freeze(value.disabledAgents);
-  if (Array.isArray(value.packageAgents)) Object.freeze(value.packageAgents);
-  if (Array.isArray(value.packageWorkflows)) Object.freeze(value.packageWorkflows);
-  return Object.freeze(value);
 }
 
 export interface AgentDefinition {
@@ -135,7 +113,6 @@ export interface AgentDefinition {
   maxTurns?: number;
   isolated?: boolean;
   enabled: boolean;
-  color?: string;
   memory?: "project" | "local" | "user";
   source: "builtin" | "project" | "user" | "package";
   file?: string;
@@ -208,7 +185,6 @@ const agentFields = Type.Object(
     maxTurns: Type.Optional(turnLimitSchema),
     isolated: Type.Optional(Type.Boolean()),
     enabled: Type.Optional(Type.Boolean()),
-    color: Type.Optional(plainText),
     memory: Type.Optional(
       Type.Union([Type.Literal("user"), Type.Literal("project"), Type.Literal("local")]),
     ),
@@ -242,7 +218,6 @@ export function parseAgent(
   }
   const parsed = parseFrontmatter(content);
   if (!record(parsed.frontmatter)) throw new Error("Agent frontmatter must be an object.");
-  rejectWorktrees(parsed.frontmatter);
 
   const fields = new Map<string, unknown>();
   for (const [original, value] of Object.entries(parsed.frontmatter)) {
@@ -254,6 +229,7 @@ export function parseAgent(
   if (!Value.Check(agentFields, data)) {
     const errors = Value.Errors(agentFields, data);
     const details = errors
+      .filter((error) => !duplicateUnknownProperty(error))
       .map((error) => {
         if (error.keyword === "additionalProperties")
           return `Unknown agent field: ${error.params.additionalProperties.join(", ")}`;
@@ -288,17 +264,6 @@ export function parseAgent(
 }
 
 /**
- * Freeze the definition and its permission lists before sharing it with a run.
- */
-export function freezeAgent(definition: AgentDefinition): AgentDefinition {
-  if (definition.tools) Object.freeze(definition.tools);
-  Object.freeze(definition.disallowedTools);
-  Object.freeze(definition.allowedSubagents);
-  Object.freeze(definition.skills);
-  return Object.freeze(definition);
-}
-
-/**
  * Write reloadable frontmatter, with JSON arrays as valid YAML flow lists.
  * Saved definitions use the same format as editable agent files.
  */
@@ -317,7 +282,6 @@ export function serializeAgent(definition: AgentDefinition): string {
     maxTurns: definition.maxTurns,
     isolated: definition.isolated,
     enabled: definition.enabled,
-    color: definition.color,
     memory: definition.memory,
   };
   const lines = Object.entries(fields)

@@ -2,6 +2,7 @@ import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
   Input,
   ScrollView,
+  getKeybindings,
   matchesKey,
   type Component,
   type Focusable,
@@ -11,10 +12,10 @@ import {
 } from "@earendil-works/pi-tui";
 
 import { ConversationPane, PreviewPane } from "./conversation.ts";
-import { rebuildTree, renderPanel } from "./panel.ts";
+import type { AgentManager } from "./manager.ts";
+import { renderPanel } from "./panel.ts";
 import { animationClock } from "./render.ts";
-import type { AgentService } from "./tools.ts";
-import { isSettled, type AgentView } from "./transcript.ts";
+import { isSettled, type AgentView } from "./types.ts";
 
 type Mode = "preview" | "conversation" | "details";
 
@@ -25,6 +26,55 @@ export type Exit = "close" | "definitions" | "settings";
 type Composer = { action: "steer" | "resume" | "restart"; target: AgentView };
 
 export type TreeRow = { view: AgentView; indent: number };
+
+interface Hit {
+  readonly start: number;
+  readonly end: number;
+  readonly key: string;
+}
+
+/** Screen geometry and click targets of one render, relative to the panel. */
+export interface Layout {
+  contentX: number;
+  headerY: number;
+  navY: number;
+  bodyY: number;
+  /** Row of the first transcript line in Conversation. */
+  transcriptY: number;
+  bodyHeight: number;
+  inputY: number;
+  footerY: number;
+  expandX: number;
+  /** List and output side by side. */
+  wide: boolean;
+  listWidth: number;
+  listHeight: number;
+  listRowHeight: number;
+  navHits: Hit[];
+  filterHits: { start: number; end: number; filter: Filter }[];
+  actionHits: Hit[];
+}
+
+function emptyLayout(): Layout {
+  return {
+    contentX: 0,
+    headerY: -1,
+    navY: -1,
+    bodyY: 0,
+    transcriptY: 0,
+    bodyHeight: 1,
+    inputY: -1,
+    footerY: -1,
+    expandX: 0,
+    wide: false,
+    listWidth: 1,
+    listHeight: 0,
+    listRowHeight: 3,
+    navHits: [],
+    filterHits: [],
+    actionHits: [],
+  };
+}
 
 export class Supervisor implements Component, Focusable {
   fullscreen = false;
@@ -58,39 +108,29 @@ export class Supervisor implements Component, Focusable {
   );
   readonly unsubscribe: () => void;
   unsubscribeClock?: () => void;
-  bodyY = 5;
-  contentX = 3;
-  navY = 3;
-  expandX = 0;
-  headerY = 1;
-  navHits: { start: number; end: number; key: string }[] = [];
-  bodyHeight = 1;
-  listHeight = 1;
-  listRowHeight = 3;
-  listWidth = 1;
+  /** Geometry of the last render. Mouse handling reads it; rendering builds a fresh one. */
+  layout = emptyLayout();
+  /** First visible row of the agent list. Kept across renders, so the list does not jump. */
   listStart = 0;
-  wide = false;
-  inputY = -1;
-  footerY = -1;
-  filterHits: { start: number; end: number; filter: Filter }[] = [];
-  actionHits: { start: number; end: number; key: string; row: number }[] = [];
   helpContent: string[] = [];
   readonly helpScroll = new ScrollView(
     { render: () => this.helpContent, invalidate() {} },
     { scrollbar: "hidden" },
   );
-  loaded = new Set<string>();
+  /** Conversation loads in progress, and loads that failed until the user retries. */
+  private readonly loading = new Set<string>();
+  private readonly failedLoads = new Set<string>();
 
   constructor(
     readonly ctx: ExtensionContext,
-    readonly service: AgentService,
+    readonly service: AgentManager,
     readonly tui: TUI,
     readonly theme: Theme,
     readonly done: (result: Exit) => void,
     selectedId?: string,
   ) {
     this.selectedId = selectedId;
-    this.conversation = new ConversationPane(tui, ctx.cwd, theme);
+    this.conversation = new ConversationPane(tui, theme);
     this.input.onEscape = () => {
       this.composer = undefined;
       this.input.focused = false;
@@ -121,10 +161,70 @@ export class Supervisor implements Component, Focusable {
   refresh(): void {
     if (this.closed) return;
     this.views = this.service.list();
-    rebuildTree(this);
+    this.showSelection();
+  }
+
+  /** Apply a change of agents, filter, or selection: one path for every caller. */
+  showSelection(): void {
+    this.rebuildTree();
     this.syncClock();
     this.loadSelected();
     this.redraw();
+  }
+
+  /** Build the parent-child list for the current filter and keep a valid selection. */
+  private rebuildTree(): void {
+    const ids = new Map(this.views.map((view) => [view.id, view]));
+    const included = new Set(
+      this.views
+        .filter(
+          (view) => this.filter === "all" || (this.filter === "finished") === isSettled(view.state),
+        )
+        .map((view) => view.id),
+    );
+    // A finishing selection stays visible even in Active. Ancestors explain child ownership.
+    if (this.selectedId && ids.has(this.selectedId)) included.add(this.selectedId);
+    for (const id of included) {
+      let view = ids.get(id);
+      const seen = new Set<string>();
+      while (view && !seen.has(view.id)) {
+        seen.add(view.id);
+        const parent = ids.get(view.owner.id);
+        if (!parent) break;
+        included.add(parent.id);
+        view = parent;
+      }
+    }
+    const children = new Map<string, AgentView[]>();
+    for (const view of this.views) {
+      if (!included.has(view.id)) continue;
+      const key = ids.has(view.owner.id) ? view.owner.id : "";
+      const entries = children.get(key) ?? [];
+      entries.push(view);
+      children.set(key, entries);
+    }
+    const tree: TreeRow[] = [];
+    const visited = new Set<string>();
+
+    const visit = (view: AgentView, indent: number): void => {
+      if (visited.has(view.id)) return;
+      visited.add(view.id);
+      tree.push({ view, indent });
+      for (const child of children.get(view.id) ?? []) visit(child, indent + 1);
+    };
+
+    for (const entries of children.values())
+      entries.sort(
+        (a, b) =>
+          Number(isSettled(a.state)) - Number(isSettled(b.state)) || b.createdAt - a.createdAt,
+      );
+    for (const root of children.get("") ?? []) visit(root, 0);
+    for (const view of this.views)
+      if (included.has(view.id) && !visited.has(view.id)) visit(view, 0);
+    this.tree = tree;
+    if (!tree.some(({ view }) => view.id === this.selectedId))
+      this.selectedId =
+        tree.find(({ view }) => !isSettled(view.state))?.view.id ?? tree[0]?.view.id;
   }
 
   syncClock(): void {
@@ -187,22 +287,23 @@ export class Supervisor implements Component, Focusable {
     return this.isCurrent(view) && !isSettled(view.state) && view.state !== "settling";
   }
 
-  loadSelected(): void {
+  loadSelected(retry = false): void {
     const view = this.selected();
-    if (
-      this.mode === "preview" ||
-      !view ||
-      view.transcriptLoaded ||
-      this.loaded.has(view.attemptId)
-    )
-      return;
-    this.loaded.add(view.attemptId);
-    void this.service.loadTranscript(view.id, view.attemptId).catch((error: unknown) => {
-      if (!this.closed && this.selected()?.attemptId === view.attemptId) {
-        this.message = `Could not load this conversation: ${String(error)}`;
-        this.redraw();
-      }
-    });
+    if (this.mode === "preview" || !view || view.transcriptLoaded) return;
+    const key = view.attemptId;
+    if (retry) this.failedLoads.delete(key);
+    if (this.loading.has(key) || this.failedLoads.has(key)) return;
+    this.loading.add(key);
+    void this.service
+      .loadTranscript(view.id, key)
+      .catch((error: unknown) => {
+        this.failedLoads.add(key);
+        if (!this.closed && this.selected()?.attemptId === key) {
+          this.message = `Could not load this conversation: ${String(error)}`;
+          this.redraw();
+        }
+      })
+      .finally(() => this.loading.delete(key));
   }
 
   select(id: string): void {
@@ -213,10 +314,7 @@ export class Supervisor implements Component, Focusable {
     this.conversation.reset();
     this.details.scrollToStart();
     this.message = "";
-    rebuildTree(this);
-    this.syncClock();
-    this.loadSelected();
-    this.redraw();
+    this.showSelection();
   }
 
   changeFilter(filter: Filter): void {
@@ -225,10 +323,7 @@ export class Supervisor implements Component, Focusable {
     if (selected && filter !== "all" && (filter === "finished") !== isSettled(selected.state))
       this.selectedId = undefined;
     this.historicalAttempt = undefined;
-    rebuildTree(this);
-    this.syncClock();
-    this.loadSelected();
-    this.redraw();
+    this.showSelection();
   }
 
   act(action: () => Promise<unknown>): void {
@@ -252,6 +347,13 @@ export class Supervisor implements Component, Focusable {
   compose(action: Composer["action"], target: AgentView): void {
     this.composer = { action, target };
     this.input.setValue(action === "restart" ? target.prompt : "");
+    // setValue keeps the old cursor, which is 0 for an empty composer. Put the cursor after the
+    // prefilled task, so typing edits its end. Input has no cursor setter, so send the
+    // "line end" key: the first common sequence that the user's keybindings map to it.
+    const lineEnd = ["\x1b[F", "\x1bOF", "\x1b[4~", "\x05"].find((sequence) =>
+      getKeybindings().matches(sequence, "tui.editor.cursorLineEnd"),
+    );
+    if (lineEnd) this.input.handleInput(lineEnd);
     this.input.focused = this.focused;
     this.redraw();
   }
@@ -313,9 +415,7 @@ export class Supervisor implements Component, Focusable {
     this.historicalAttempt = this.isCurrent(next) ? undefined : next.attemptId;
     this.conversation.reset();
     this.details.scrollToStart();
-    this.syncClock();
-    this.loadSelected();
-    this.redraw();
+    this.showSelection();
   }
 
   handleInput(data: string): void {
@@ -340,8 +440,8 @@ export class Supervisor implements Component, Focusable {
       } else if (data === "f") this.fullscreen = !this.fullscreen;
       else if (matchesKey(data, "up")) this.helpScroll.scrollBy(-1);
       else if (matchesKey(data, "down")) this.helpScroll.scrollBy(1);
-      else if (matchesKey(data, "pageUp")) this.helpScroll.scrollBy(-this.bodyHeight);
-      else if (matchesKey(data, "pageDown")) this.helpScroll.scrollBy(this.bodyHeight);
+      else if (matchesKey(data, "pageUp")) this.helpScroll.scrollBy(-this.layout.bodyHeight);
+      else if (matchesKey(data, "pageDown")) this.helpScroll.scrollBy(this.layout.bodyHeight);
       this.redraw();
       return;
     }
@@ -374,8 +474,7 @@ export class Supervisor implements Component, Focusable {
         this.mode = "conversation";
         this.detailsFromConversation = false;
         this.previewFocused = true;
-        this.loaded.delete(view.attemptId);
-        this.loadSelected();
+        this.loadSelected(true);
       } else if (data === "d" && view) {
         this.detailsFromConversation = this.readingPane && this.mode === "conversation";
         this.mode = "details";
@@ -390,11 +489,8 @@ export class Supervisor implements Component, Focusable {
       else if (data === "x" && view && this.canStop(view) && !this.busy) this.confirmStop = view;
       else if (matchesKey(data, "up") || matchesKey(data, "down")) {
         const direction = matchesKey(data, "up") ? -1 : 1;
-        if (this.mode === "preview" && !this.previewFocused) {
-          const index = this.tree.findIndex(({ view: entry }) => entry.id === this.selectedId);
-          const next = this.tree[Math.max(0, Math.min(this.tree.length - 1, index + direction))];
-          if (next) this.select(next.view.id);
-        } else this.scrollBy(direction);
+        if (this.mode === "preview" && !this.previewFocused) this.moveSelection(direction);
+        else this.scrollBy(direction);
       } else if (matchesKey(data, "pageUp"))
         this.scrollBy(-Math.max(1, this.scroll().viewportHeight - 2));
       else if (matchesKey(data, "pageDown"))
@@ -414,6 +510,13 @@ export class Supervisor implements Component, Focusable {
         : this.preview.scroll;
   }
 
+  /** Move the selection through the visible tree, the same way for keys and the wheel. */
+  moveSelection(direction: number): void {
+    const index = this.tree.findIndex(({ view }) => view.id === this.selectedId);
+    const next = this.tree[Math.max(0, Math.min(this.tree.length - 1, index + direction))];
+    if (next) this.select(next.view.id);
+  }
+
   scrollBy(lines: number): void {
     const scroll = this.scroll();
     scroll.scrollTo(scroll.scrollTop + lines, { disableFollow: true });
@@ -421,12 +524,12 @@ export class Supervisor implements Component, Focusable {
 
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
     if (this.closed) return undefined;
-    if (this.composer && event.y === this.inputY)
+    if (this.composer && event.y === this.layout.inputY)
       return this.input.handleMouse({
         ...event,
-        x: event.x - this.contentX,
+        x: event.x - this.layout.contentX,
         y: 0,
-        width: Math.max(1, event.width - this.contentX * 2),
+        width: Math.max(1, event.width - this.layout.contentX * 2),
         height: 1,
       });
     if (event.type === "wheel") {
@@ -434,16 +537,11 @@ export class Supervisor implements Component, Focusable {
       else if (!this.composer && !this.confirmStop && !this.help) {
         if (
           this.mode === "preview" &&
-          event.y >= this.bodyY &&
-          event.y < this.bodyY + this.listHeight &&
-          (!this.wide || event.x < this.contentX + this.listWidth)
+          event.y >= this.layout.bodyY &&
+          event.y < this.layout.bodyY + this.layout.listHeight &&
+          (!this.layout.wide || event.x < this.layout.contentX + this.layout.listWidth)
         ) {
-          const index = Math.max(
-            0,
-            Math.min(this.tree.length - 1, this.listStart + (event.wheelDelta ?? 0)),
-          );
-          const row = this.tree[index];
-          if (row) this.select(row.view.id);
+          this.moveSelection(Math.sign(event.wheelDelta ?? 0));
         } else this.scrollBy(event.wheelDelta ?? 0);
       }
       this.redraw();
@@ -464,14 +562,18 @@ export class Supervisor implements Component, Focusable {
                 : key,
       );
 
-    if (event.y === this.footerY) {
-      const hit = this.actionHits.find((entry) => event.x >= entry.start && event.x < entry.end);
+    if (event.y === this.layout.footerY) {
+      const hit = this.layout.actionHits.find(
+        (entry) => event.x >= entry.start && event.x < entry.end,
+      );
       if (hit) send(hit.key);
     } else if (!this.composer && !this.confirmStop) {
-      if (event.y === this.headerY && event.x >= this.expandX) send("f");
-      else if (event.y === this.navY && !this.help) {
-        const tab = this.navHits.find((entry) => event.x >= entry.start && event.x < entry.end);
-        const filter = this.filterHits.find(
+      if (event.y === this.layout.headerY && event.x >= this.layout.expandX) send("f");
+      else if (event.y === this.layout.navY && !this.help) {
+        const tab = this.layout.navHits.find(
+          (entry) => event.x >= entry.start && event.x < entry.end,
+        );
+        const filter = this.layout.filterHits.find(
           (entry) => event.x >= entry.start && event.x < entry.end,
         );
         if (tab) send(tab.key);
@@ -479,12 +581,14 @@ export class Supervisor implements Component, Focusable {
       } else if (
         !this.help &&
         this.mode === "preview" &&
-        event.y >= this.bodyY &&
-        event.y < this.bodyY + this.listHeight &&
-        (!this.wide || event.x < this.contentX + this.listWidth)
+        event.y >= this.layout.bodyY &&
+        event.y < this.layout.bodyY + this.layout.listHeight &&
+        (!this.layout.wide || event.x < this.layout.contentX + this.layout.listWidth)
       ) {
         const row =
-          this.tree[this.listStart + Math.floor((event.y - this.bodyY) / this.listRowHeight)];
+          this.tree[
+            this.listStart + Math.floor((event.y - this.layout.bodyY) / this.layout.listRowHeight)
+          ];
         if (row) {
           this.select(row.view.id);
           this.previewFocused = false;
@@ -493,9 +597,9 @@ export class Supervisor implements Component, Focusable {
       } else if (
         !this.help &&
         this.mode === "conversation" &&
-        event.y >= this.bodyY &&
-        event.y < this.bodyY + this.bodyHeight &&
-        this.conversation.toggleNoticeAt(event.y - this.bodyY)
+        event.y >= this.layout.transcriptY &&
+        event.y < this.layout.bodyY + this.layout.bodyHeight &&
+        this.conversation.toggleNoticeAt(event.y - this.layout.transcriptY)
       )
         return { handled: true, render: true, focus: true };
       else this.previewFocused = true;
@@ -520,18 +624,22 @@ export class Supervisor implements Component, Focusable {
     this.input.focused = false;
     this.input.onSubmit = undefined;
     this.input.onEscape = undefined;
-    this.loaded.clear();
+    this.loading.clear();
+    this.failedLoads.clear();
   }
 
   render(width: number): string[] {
-    return renderPanel(this, width);
+    const layout = emptyLayout();
+    const lines = renderPanel(this, layout, width);
+    this.layout = layout;
+    return lines;
   }
 }
 
 /** Visibility callback receives a close function for lifecycle disposal; it is cleared on exit. */
 export async function openSupervisor(
   ctx: ExtensionContext,
-  service: AgentService,
+  service: AgentManager,
   onMenu: (action: "definitions" | "settings") => Promise<void>,
   selectedId?: string,
   onVisibility?: (visible: boolean, close?: () => void) => void,
