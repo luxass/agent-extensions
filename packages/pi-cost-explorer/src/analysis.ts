@@ -18,21 +18,14 @@ export const SOURCE_LABELS: Record<UsageSource, string> = {
   branch_summary: "Branch summaries",
 };
 
-/** Token counts and costs added up over a group of usage records. */
-export interface UsageTotals {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  /** Sum of the four token kinds, as Pi counts it. */
-  tokens: number;
-  cost: number;
-  costInput: number;
-  costOutput: number;
-  costCacheRead: number;
-  costCacheWrite: number;
-  count: number;
-}
+/**
+ * Token counts and costs added up over a group of usage records. The fields match Pi's
+ * `Usage`, so one record's usage is already a set of totals.
+ */
+export type UsageTotals = Pick<Usage, TokenKind | "cost"> & { count: number };
+
+const TOKEN_KINDS = ["input", "output", "cacheRead", "cacheWrite"] as const;
+type TokenKind = (typeof TOKEN_KINDS)[number];
 
 /** Token usage and cost from one session entry, such as a model response. */
 export interface UsageRecord {
@@ -107,28 +100,23 @@ export function createUsageTotals(): UsageTotals {
     output: 0,
     cacheRead: 0,
     cacheWrite: 0,
-    tokens: 0,
-    cost: 0,
-    costInput: 0,
-    costOutput: 0,
-    costCacheRead: 0,
-    costCacheWrite: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     count: 0,
   };
 }
 
 export function addUsage(totals: UsageTotals, usage: Usage): void {
-  totals.input += usage.input;
-  totals.output += usage.output;
-  totals.cacheRead += usage.cacheRead;
-  totals.cacheWrite += usage.cacheWrite;
-  totals.tokens += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-  totals.cost += usage.cost.total;
-  totals.costInput += usage.cost.input;
-  totals.costOutput += usage.cost.output;
-  totals.costCacheRead += usage.cost.cacheRead;
-  totals.costCacheWrite += usage.cost.cacheWrite;
+  for (const kind of TOKEN_KINDS) {
+    totals[kind] += usage[kind];
+    totals.cost[kind] += usage.cost[kind];
+  }
+  totals.cost.total += usage.cost.total;
   totals.count += 1;
+}
+
+/** Sum of the four token kinds, as Pi counts it in `/session`. */
+export function tokenCount(totals: UsageTotals): number {
+  return TOKEN_KINDS.reduce((sum, kind) => sum + totals[kind], 0);
 }
 
 /** Share of prompt tokens served from the cache. */
@@ -324,9 +312,12 @@ export function analyze(
     bySource,
     records: ordered,
     turns: [...turns.values()],
-    models: [...models.values()].toSorted((left, right) => right.totals.cost - left.totals.cost),
+    models: [...models.values()].toSorted(
+      (left, right) => right.totals.cost.total - left.totals.cost.total,
+    ),
     tools: [...tools.values()].toSorted(
-      (left, right) => right.share + right.nested.cost - (left.share + left.nested.cost),
+      (left, right) =>
+        right.share + right.nested.cost.total - (left.share + left.nested.cost.total),
     ),
     unpriced,
     failedCost,

@@ -14,10 +14,10 @@ import {
 } from "@earendil-works/pi-tui";
 
 import {
-  addUsage,
   cacheHitRate,
   createUsageTotals,
   SOURCE_LABELS,
+  tokenCount,
   type Analysis,
   type UsageRecord,
   type UsageTotals,
@@ -226,7 +226,7 @@ export class CostDialog implements Component {
       theme.fg(
         "accent",
         truncateToWidth(
-          ` Cost explorer · ${money(this.analysis.total.cost)} · ${branches} `,
+          ` Cost explorer · ${money(this.analysis.total.cost.total)} · ${branches} `,
           inner,
           "…",
         ),
@@ -397,7 +397,7 @@ function overviewScreen({ analysis, theme, width, onlyCurrentBranch }: ScreenCon
 
   field(
     "Total",
-    theme.bold(theme.fg("accent", money(total.cost))) +
+    theme.bold(theme.fg("accent", money(total.cost.total))) +
       theme.fg(
         "dim",
         `  ${plural(requests.count, "request")} · ${plural(prompts, "prompt")}${span}`,
@@ -406,7 +406,7 @@ function overviewScreen({ analysis, theme, width, onlyCurrentBranch }: ScreenCon
   field(
     "Tokens",
     [
-      theme.fg("text", tokens(total.tokens)),
+      theme.fg("text", tokens(tokenCount(total))),
       `in ${tokens(total.input)}`,
       `out ${tokens(total.output)}`,
       `cache read ${tokens(total.cacheRead)}`,
@@ -423,7 +423,7 @@ function overviewScreen({ analysis, theme, width, onlyCurrentBranch }: ScreenCon
   field("Cache hit rate", `${percent(cacheHitRate(total))} of prompt tokens read from cache`);
   field(
     "Averages",
-    `${money(prompts > 0 ? total.cost / prompts : 0)} per prompt${dot}${money(requests.count > 0 ? requests.cost / requests.count : 0)} per request`,
+    `${money(prompts > 0 ? total.cost.total / prompts : 0)} per prompt${dot}${money(requests.count > 0 ? requests.cost.total / requests.count : 0)} per request`,
   );
   field(
     "Cost over time",
@@ -436,16 +436,18 @@ function overviewScreen({ analysis, theme, width, onlyCurrentBranch }: ScreenCon
     ),
   );
 
-  const sources = [...analysis.bySource].toSorted((left, right) => right[1].cost - left[1].cost);
+  const sources = [...analysis.bySource].toSorted(
+    (left, right) => right[1].cost.total - left[1].cost.total,
+  );
   lines.push("", theme.bold("By source"));
   lines.push(
     ...table<(typeof sources)[number]>(
       [
         { header: "", cell: ([source]) => `  ${SOURCE_LABELS[source]}` },
-        costColumn(theme, ([, totals]) => totals.cost),
-        numberColumn("", 6, ([, totals]) => percent(totals.cost / total.cost)),
+        costColumn(theme, ([, totals]) => totals.cost.total),
+        numberColumn("", 6, ([, totals]) => percent(totals.cost.total / total.cost.total)),
         numberColumn("", 6, ([, totals]) => `${totals.count}×`),
-        barColumn(theme, sources, ([, totals]) => totals.cost),
+        barColumn(theme, sources, ([, totals]) => totals.cost.total),
       ],
       sources,
       width,
@@ -453,25 +455,27 @@ function overviewScreen({ analysis, theme, width, onlyCurrentBranch }: ScreenCon
   );
 
   const model = analysis.models[0];
-  const turn = analysis.turns.toSorted((left, right) => right.totals.cost - left.totals.cost)[0];
+  const turn = analysis.turns.toSorted(
+    (left, right) => right.totals.cost.total - left.totals.cost.total,
+  )[0];
   const tool = analysis.tools[0];
   lines.push("", theme.bold("Biggest spenders"));
   if (model) {
     field(
       "Model",
-      `${model.model} ${theme.fg("accent", money(model.totals.cost))} ${theme.fg("dim", `(${percent(model.totals.cost / total.cost)})`)}`,
+      `${model.model} ${theme.fg("accent", money(model.totals.cost.total))} ${theme.fg("dim", `(${percent(model.totals.cost.total / total.cost.total)})`)}`,
     );
   }
-  if (turn && turn.totals.cost > 0) {
+  if (turn && turn.totals.cost.total > 0) {
     field(
       "Prompt",
-      `#${turn.index} ${theme.fg("text", `“${truncateToWidth(turn.prompt, 60, "…")}”`)} ${theme.fg("accent", money(turn.totals.cost))}`,
+      `#${turn.index} ${theme.fg("text", `“${truncateToWidth(turn.prompt, 60, "…")}”`)} ${theme.fg("accent", money(turn.totals.cost.total))}`,
     );
   }
   if (tool && tool.calls > 0) {
     field(
       "Tool",
-      `${tool.name} ${theme.fg("accent", `≈${money(tool.share + tool.nested.cost)}`)} ${theme.fg("dim", `over ${plural(tool.calls, "call")}`)}`,
+      `${tool.name} ${theme.fg("accent", `≈${money(tool.share + tool.nested.cost.total)}`)} ${theme.fg("dim", `over ${plural(tool.calls, "call")}`)}`,
     );
   }
 
@@ -505,9 +509,14 @@ function modelsScreen({ analysis, theme, width, sort }: ScreenContext): Screen {
     numberColumn("Input", 7, (row) => tokens(row.totals.input), true),
     numberColumn("Output", 7, (row) => tokens(row.totals.output), true),
     numberColumn("Cache", 6, (row) => percent(cacheHitRate(row.totals)), true),
-    costColumn(theme, (row) => row.totals.cost),
-    numberColumn("Share", 5, (row) => percent(row.totals.cost / analysis.total.cost), true),
-    barColumn(theme, rows, (row) => row.totals.cost),
+    costColumn(theme, (row) => row.totals.cost.total),
+    numberColumn(
+      "Share",
+      5,
+      (row) => percent(row.totals.cost.total / analysis.total.cost.total),
+      true,
+    ),
+    barColumn(theme, rows, (row) => row.totals.cost.total),
   ];
   return { ...table(columns, rows, width), ids: rows.map((row) => row.key) };
 }
@@ -515,16 +524,18 @@ function modelsScreen({ analysis, theme, width, sort }: ScreenContext): Screen {
 function turnsScreen({ analysis, theme, width, sort }: ScreenContext): Screen {
   const turns = analysis.turns.filter((turn) => turn.records.length > 0);
   const rows =
-    sort === "cost" ? turns.toSorted((left, right) => right.totals.cost - left.totals.cost) : turns;
+    sort === "cost"
+      ? turns.toSorted((left, right) => right.totals.cost.total - left.totals.cost.total)
+      : turns;
   const columns: Column<(typeof rows)[number]>[] = [
     numberColumn("#", 4, (row) => String(row.index)),
     { header: "Time", width: 5, optional: true, cell: (row) => clock(row.timestamp) },
     { header: "Prompt", cell: (row) => row.prompt },
     numberColumn("Reqs", 4, (row) => String(row.totals.count), true),
     numberColumn("Tools", 5, (row) => String(row.toolCalls), true),
-    numberColumn("Tokens", 7, (row) => tokens(row.totals.tokens), true),
-    costColumn(theme, (row) => row.totals.cost),
-    barColumn(theme, rows, (row) => row.totals.cost),
+    numberColumn("Tokens", 7, (row) => tokens(tokenCount(row.totals)), true),
+    costColumn(theme, (row) => row.totals.cost.total),
+    barColumn(theme, rows, (row) => row.totals.cost.total),
   ];
   const { header, lines } = table(columns, rows, width);
   return { header, lines: dimOffBranch(theme, rows, lines), ids: rows.map((row) => row.id) };
@@ -550,9 +561,14 @@ function toolsScreen({ analysis, theme, width, sort }: ScreenContext): Screen {
       (row) => (row.durationMs > 0 ? duration(row.durationMs) : "–"),
       true,
     ),
-    numberColumn("Nested", 9, (row) => (row.nested.count > 0 ? money(row.nested.cost) : "–"), true),
+    numberColumn(
+      "Nested",
+      9,
+      (row) => (row.nested.count > 0 ? money(row.nested.cost.total) : "–"),
+      true,
+    ),
     costColumn(theme, (row) => row.share, "≈ Calling"),
-    barColumn(theme, rows, (row) => row.share + row.nested.cost),
+    barColumn(theme, rows, (row) => row.share + row.nested.cost.total),
   ];
   return { ...table(columns, rows, width), ids: rows.map((row) => row.name) };
 }
@@ -597,8 +613,7 @@ function recordDetail({ analysis, theme, width }: ScreenContext, id: string): Sc
   if (!record) return undefined;
 
   const turn = analysis.turns.find((item) => item.id === record.turnId);
-  const totals = createUsageTotals();
-  addUsage(totals, record.usage);
+  const totals = { ...record.usage, count: 1 };
 
   const fields: [string, string | undefined][] = [
     ["Source", SOURCE_LABELS[record.source]],
@@ -630,19 +645,19 @@ function recordDetail({ analysis, theme, width }: ScreenContext, id: string): Sc
 // Shared pieces
 
 const COST_PARTS = [
-  ["input", "accent", (totals: UsageTotals) => totals.costInput],
-  ["output", "success", (totals: UsageTotals) => totals.costOutput],
-  ["cache read", "muted", (totals: UsageTotals) => totals.costCacheRead],
-  ["cache write", "warning", (totals: UsageTotals) => totals.costCacheWrite],
+  ["input", "accent", (totals: UsageTotals) => totals.cost.input],
+  ["output", "success", (totals: UsageTotals) => totals.cost.output],
+  ["cache read", "muted", (totals: UsageTotals) => totals.cost.cacheRead],
+  ["cache write", "warning", (totals: UsageTotals) => totals.cost.cacheWrite],
 ] as const;
 
 /** One bar split into the cost of each token kind. */
 function costSplit(theme: Theme, totals: UsageTotals, width: number): string {
-  if (totals.cost <= 0) return "";
+  if (totals.cost.total <= 0) return "";
   let used = 0;
   return COST_PARTS.map(([, color, cost], index) => {
     // The last part takes what is left, so rounding never changes the bar's width.
-    const share = Math.round((cost(totals) / totals.cost) * width);
+    const share = Math.round((cost(totals) / totals.cost.total) * width);
     const cells = index === COST_PARTS.length - 1 ? width - used : Math.min(width - used, share);
     used += cells;
     return theme.fg(color, "█".repeat(cells));
@@ -651,11 +666,11 @@ function costSplit(theme: Theme, totals: UsageTotals, width: number): string {
 
 function breakdown(theme: Theme, totals: UsageTotals, width: number): string[] {
   const rows: [label: string, count: number, cost: number][] = [
-    ["Input", totals.input, totals.costInput],
-    ["Output", totals.output, totals.costOutput],
-    ["Cache read", totals.cacheRead, totals.costCacheRead],
-    ["Cache write", totals.cacheWrite, totals.costCacheWrite],
-    ["Total", totals.tokens, totals.cost],
+    ["Input", totals.input, totals.cost.input],
+    ["Output", totals.output, totals.cost.output],
+    ["Cache read", totals.cacheRead, totals.cost.cacheRead],
+    ["Cache write", totals.cacheWrite, totals.cost.cacheWrite],
+    ["Total", tokenCount(totals), totals.cost.total],
   ];
   const { header, lines } = table<(typeof rows)[number]>(
     [
