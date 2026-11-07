@@ -74,8 +74,11 @@ function answerLine(result: string): string {
 }
 
 export function plain(value: string): string {
-  // oxlint-disable-next-line eslint/no-control-regex -- Keep printable text, tabs and line breaks.
-  return stripTerminalSequences(value).replace(/[\x00-\x08\u000b-\x1f\u007f]/g, "");
+  return stripTerminalSequences(value).replace(
+    // oxlint-disable-next-line eslint/no-control-regex -- Keep printable text, tabs and line breaks.
+    /[\x00-\x08\u000b-\x1f\u007f-\u009f\ufff9-\ufffb]/g,
+    "",
+  );
 }
 
 function heading(
@@ -162,7 +165,10 @@ export class AgentCard implements Component {
     )
       return this.cached.lines;
     const badge = agentBadge(view);
-    const lines = [this.theme.fg(badge.tone, `${badge.icon} `) + this.theme.bold(taskTitle(view))];
+    const lines = [
+      this.theme.fg(badge.tone, `${badge.icon} `) +
+        this.theme.bold(taskTitle({ task: plain(view.task) })),
+    ];
     const tokens =
       view.usage.input + view.usage.output + view.usage.cacheRead + view.usage.cacheWrite;
     const tokenCount =
@@ -192,11 +198,13 @@ export class AgentCard implements Component {
       }
     }
     lines.push(this.theme.fg(view.state === "failed" ? "error" : "muted", `  ${summary}`));
-    const text = active
-      ? this.expanded
-        ? view.result || view.activity
-        : view.activity
-      : view.result || view.error || (view.state === "completed" ? "Done" : "Stopped");
+    const text = plain(
+      active
+        ? this.expanded
+          ? view.result || view.activity
+          : view.activity
+        : view.result || view.error || (view.state === "completed" ? "Done" : "Stopped"),
+    );
     if (!this.expanded && view.error) {
       const error = plain(view.error).replace(/\s+/g, " ");
       lines.push(this.theme.fg("error", `  ${error}`));
@@ -297,12 +305,13 @@ export function agentRenderers(
           const lines = [
             label === "Agent"
               ? truncateToWidth(
-                  theme.fg(tone, `${icon} `) + theme.bold(taskTitle({ task }) || "Preparing task…"),
+                  theme.fg(tone, `${icon} `) +
+                    theme.bold(taskTitle({ task: plain(task) }) || "Preparing task…"),
                   width,
                 )
               : heading(
                   plain(role).replace(/\s+/g, " "),
-                  taskTitle({ task }),
+                  taskTitle({ task: plain(task) }),
                   icon,
                   "",
                   theme,

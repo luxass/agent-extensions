@@ -9,6 +9,7 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   ModelRuntime,
+  parseArgs,
   SessionManager,
   SettingsManager,
   type AgentSession,
@@ -240,12 +241,10 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
           });
       }
       const isolated = definition.isolated === true || request.isolated === true;
-      const noExtensions =
-        isolated ||
-        !ctx.isProjectTrusted() ||
-        process.argv.includes("--no-extensions") ||
-        process.argv.includes("-ne");
-      const noMcp = process.argv.includes("--no-mcp");
+      // Children honour the parent's resource flags. Parent -e paths are not forwarded.
+      const flags = parseArgs(process.argv.slice(2));
+      const noExtensions = isolated || !ctx.isProjectTrusted() || flags.noExtensions === true;
+      const noMcp = flags.noMcp === true;
 
       const scope: ExtensionFactory = (extension) => {
         extension.on("turn_end", (state, ctx) => hooks.boundary?.(state, ctx));
@@ -286,6 +285,10 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
         agentDir: getAgentDir(),
         settingsManager: parentSettings,
         noExtensions,
+        noSkills: flags.noSkills,
+        noPromptTemplates: flags.noPromptTemplates,
+        noThemes: flags.noThemes,
+        noContextFiles: flags.noContextFiles,
         disabledBuiltinExtensions: noExtensions
           ? ["codemode", "tool-search", "mcp"]
           : noMcp
@@ -433,6 +436,9 @@ export async function openSession(input: RunnerInput, hooks: RunnerHooks): Promi
               );
               signal.throwIfAborted();
               if (asynchronousError) throw asynchronousError;
+              // The budget abort can resolve prompt() with an aborted final message.
+              if (budgetReached)
+                return `${text}\n\nTurn limit reached. Work may be unfinished; partial results are preserved in the conversation.`;
               const final = created.messages.at(-1);
               if (final?.role === "assistant" && final.stopReason === "error")
                 throw new Error(final.errorMessage || "Child model request failed.");

@@ -14,7 +14,7 @@ import {
 import { ConversationPane, PreviewPane } from "./conversation.ts";
 import type { AgentManager } from "./manager.ts";
 import { renderPanel } from "./panel.ts";
-import { animationClock } from "./render.ts";
+import { animationClock, plain } from "./render.ts";
 import { isSettled, type AgentView } from "./types.ts";
 
 type Mode = "preview" | "conversation" | "details";
@@ -261,7 +261,10 @@ export class Supervisor implements Component, Focusable {
   definitionAvailable(view: AgentView): boolean {
     return this.service.catalog
       .definitions()
-      .some((definition) => definition.name === view.agentType && definition.enabled);
+      .some(
+        (definition) =>
+          definition.name.toLowerCase() === view.agentType.toLowerCase() && definition.enabled,
+      );
   }
 
   canResume(view: AgentView): boolean {
@@ -299,7 +302,7 @@ export class Supervisor implements Component, Focusable {
       .catch((error: unknown) => {
         this.failedLoads.add(key);
         if (!this.closed && this.selected()?.attemptId === key) {
-          this.message = `Could not load this conversation: ${String(error)}`;
+          this.message = plain(`Could not load this conversation: ${String(error)}`);
           this.redraw();
         }
       })
@@ -333,7 +336,7 @@ export class Supervisor implements Component, Focusable {
     void action()
       .catch((error: unknown) => {
         if (!this.closed) {
-          this.message = String(error);
+          this.message = plain(String(error));
           this.ctx.ui.notify(this.message, "error");
         }
       })
@@ -346,7 +349,7 @@ export class Supervisor implements Component, Focusable {
 
   compose(action: Composer["action"], target: AgentView): void {
     this.composer = { action, target };
-    this.input.setValue(action === "restart" ? target.prompt : "");
+    this.input.setValue(action === "restart" ? plain(target.prompt) : "");
     // setValue keeps the old cursor, which is 0 for an empty composer. Put the cursor after the
     // prefilled task, so typing edits its end. Input has no cursor setter, so send the
     // "line end" key: the first common sequence that the user's keybindings map to it.

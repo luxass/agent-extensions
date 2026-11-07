@@ -1,7 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import { detailLines } from "./conversation.ts";
-import { agentBadge, between, counts, elapsed, fit, helpLines } from "./render.ts";
+import { agentBadge, between, counts, elapsed, fit, helpLines, plain } from "./render.ts";
 import type { Filter, Layout, Supervisor } from "./supervisor.ts";
 import { taskTitle } from "./transcript.ts";
 import { isSettled, type AgentView } from "./types.ts";
@@ -205,12 +205,13 @@ function renderList(panel: Supervisor, layout: Layout, height: number, compact =
     const marker = selected
       ? panel.theme.fg(panel.previewFocused ? "muted" : "accent", "▌ ")
       : "  ";
+    const task = taskTitle({ task: plain(view.task) });
     const title = fit(
-      `${marker}${branch}${selected ? panel.theme.bold(taskTitle(view)) : taskTitle(view)}`,
+      `${marker}${branch}${selected ? panel.theme.bold(task) : task}`,
       layout.listWidth,
     );
     const state = panel.theme.fg(badge.tone, `${badge.icon} ${badge.label}`);
-    const identity = compact ? `@${view.name} · ${view.displayName}` : view.displayName;
+    const identity = plain(compact ? `@${view.name} · ${view.displayName}` : view.displayName);
     const caption = fit(`${marker}${branch}${panel.theme.fg("muted", identity)}`, identityWidth);
     const duration = elapsed(view, now);
     const timing = panel.theme.fg(
@@ -253,9 +254,9 @@ function output(
       ? !panel.conversation.scroll.isFollowingEnd
       : panel.mode === "preview" && !panel.preview.scroll.isFollowingEnd;
   const header = [
-    panel.theme.bold(taskTitle(view)),
+    panel.theme.bold(taskTitle({ task: plain(view.task) })),
     between(
-      `${panel.theme.fg("muted", history)}${panel.theme.fg(badge.tone, `${badge.icon} ${badge.label}`)} · ${panel.theme.fg("muted", view.displayName)}`,
+      `${panel.theme.fg("muted", history)}${panel.theme.fg(badge.tone, `${badge.icon} ${badge.label}`)} · ${panel.theme.fg("muted", plain(view.displayName))}`,
       panel.theme.fg("dim", `${elapsed(view)}${paused ? " · Paused" : ""}`),
       width,
     ),
@@ -404,11 +405,11 @@ export function renderPanel(panel: Supervisor, layout: Layout, width: number): s
       line(
         panel.theme.fg(
           "warning",
-          `Stop “${taskTitle(panel.confirmStop)}” and its children?  y / n`,
+          `Stop “${taskTitle({ task: plain(panel.confirmStop.task) })}” and its children?  y / n`,
         ),
       ),
     );
-  else if (panel.message) lines.push(line(panel.theme.fg("warning", panel.message)));
+  else if (panel.message) lines.push(line(panel.theme.fg("warning", plain(panel.message))));
   else if (panel.busy) lines.push(line(panel.theme.fg("dim", "Applying action…")));
   lines.push(rule("├", "┤"));
   layout.footerY = lines.length;
@@ -450,7 +451,7 @@ function renderReadingPane(panel: Supervisor, layout: Layout, width: number): st
     { start: layout.contentX, end: layout.contentX + visibleWidth(back), key: "escape" },
   ];
   const name = view
-    ? panel.theme.bold(view.name) +
+    ? panel.theme.bold(plain(view.name)) +
       panel.theme.fg(
         "dim",
         ` · Attempt ${view.attemptNumber}${panel.historicalAttempt ? " · History" : ""}`,
@@ -507,7 +508,7 @@ function renderReadingPane(panel: Supervisor, layout: Layout, width: number): st
     lines.push(line(panel.input.render(inner)[0] ?? ""));
   } else if (panel.confirmStop)
     lines.push(line(panel.theme.fg("warning", "Stop this agent and its children? y / n")));
-  else if (panel.message) lines.push(line(panel.theme.fg("warning", panel.message)));
+  else if (panel.message) lines.push(line(panel.theme.fg("warning", plain(panel.message))));
   else if (panel.busy) lines.push(line(panel.theme.fg("dim", "Applying action…")));
   lines.push(rule);
   layout.footerY = lines.length;

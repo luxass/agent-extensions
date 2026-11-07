@@ -103,7 +103,13 @@ export class Delivery {
 
   /** Queue a settled background attempt that its owner has not collected. */
   add(view: AgentView): void {
-    if (this.closed || !view.background || this.manager.isConsumed(view.attemptId)) return;
+    if (
+      this.closed ||
+      !view.background ||
+      !this.canDeliver(view) ||
+      this.manager.isConsumed(view.attemptId)
+    )
+      return;
     this.outbox.set(view.attemptId, view);
     if (this.grouped(view)) this.groupDeadline ??= Date.now() + groupWindowMs;
     this.schedule();
@@ -128,7 +134,7 @@ export class Delivery {
     if (this.closed) return;
     const { started, received } = branchState(ctx);
     for (const view of this.manager.finishedBackgroundAttempts())
-      if (started.has(view.attemptId) && !received.has(view.attemptId)) {
+      if (this.canDeliver(view) && started.has(view.attemptId) && !received.has(view.attemptId)) {
         this.manager.markUndelivered(view.attemptId);
         // The previous branch may have had this delivery in flight; this branch needs its own.
         this.inFlight.delete(view.attemptId);
@@ -167,9 +173,11 @@ export class Delivery {
         this.inFlight.delete(id);
       }
     if (!this.manager.context.isIdle()) return;
+    const { started } = branchState(this.manager.context);
     const pending = [...this.outbox.values()].filter(
       (view) =>
         !view.owner.attemptId &&
+        started.has(view.attemptId) &&
         !this.inFlight.has(view.attemptId) &&
         !this.manager.isConsumed(view.attemptId),
     );
@@ -195,6 +203,11 @@ export class Delivery {
     this.inFlight.clear();
   }
 
+  private canDeliver(view: AgentView): boolean {
+    const attempt = this.manager.attempts.get(view.attemptId);
+    return !!attempt && !attempt.restoredUnsettled && !attempt.deliverySuppressed;
+  }
+
   private grouped(view: AgentView): boolean {
     return !view.owner.attemptId && this.manager.deliveryMode(view.attemptId) === "group";
   }
@@ -212,6 +225,11 @@ export class Delivery {
     const views: AgentView[] = [];
     for (const [id, view] of this.outbox) {
       if (!sameOwner(view.owner, owner)) continue;
+      if (!this.canDeliver(view)) {
+        this.outbox.delete(id);
+        this.inFlight.delete(id);
+        continue;
+      }
       if (received.has(id)) this.manager.delivered(id);
       if (this.manager.isConsumed(id)) {
         this.outbox.delete(id);
@@ -232,8 +250,10 @@ export class Delivery {
   private flush(): void {
     if (this.closed || !this.manager.context.isIdle()) return;
     const views = this.ready(this.manager.root, this.manager.context);
-    if (!views.length) return;
     for (const view of views) this.inFlight.add(view.attemptId);
+    // A short idle send must not strand grouped entries until another event arrives.
+    this.schedule();
+    if (!views.length) return;
     try {
       childSessionContext.exit(() => this.pi.sendMessage(completion(views), { triggerTurn: true }));
     } catch (error) {

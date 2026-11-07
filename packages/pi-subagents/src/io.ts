@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { mkdir, open, realpath, rename, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, realpath, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export function isMissing(error: unknown): boolean {
@@ -31,12 +31,18 @@ export async function readText(path: string, limit = maxResourceBytes): Promise<
     const info = await file.stat();
     if (!info.isFile() || info.size > limit)
       throw new Error(`Expected a regular file of at most ${limit} bytes: ${path}`);
-    const buffer = Buffer.alloc(limit + 1);
+    let buffer = Buffer.alloc(Math.min(info.size, limit) + 1);
     let length = 0;
     while (length < buffer.length) {
       const result = await file.read(buffer, length, buffer.length - length, null);
       if (result.bytesRead === 0) break;
       length += result.bytesRead;
+      // A file can grow after stat; keep reading up to the limit plus one byte.
+      if (length === buffer.length && length <= limit) {
+        const expanded = Buffer.alloc(Math.min(limit + 1, buffer.length * 2));
+        buffer.copy(expanded);
+        buffer = expanded;
+      }
     }
     if (length > limit) throw new Error(`File exceeds ${limit} bytes: ${path}`);
     return buffer.subarray(0, length).toString("utf8");
@@ -60,16 +66,26 @@ export async function readObject(path: string): Promise<Record<string, unknown>>
 }
 
 /**
- * Replace a file atomically and preserve the old file on failure.
+ * Replace a regular file atomically, preserving its mode and the old file on failure.
+ * Symlink targets are refused rather than replacing the link or bypassing caller path checks.
  * There is no cross-process lock: concurrent writers of one file use last-writer-wins.
  */
 export async function atomicWrite(path: string, content: string): Promise<void> {
+  const existing = await lstat(path).catch((error: unknown) => {
+    if (!isMissing(error)) throw error;
+    return undefined;
+  });
+  if (existing?.isSymbolicLink())
+    throw new Error(`Refusing to replace a symbolic link: ${path}. Edit its real target instead.`);
+  if (existing && !existing.isFile())
+    throw new Error(`Expected a regular file destination: ${path}`);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temp = `${path}.${randomUUID()}.tmp`;
   try {
     const file = await open(temp, "wx", 0o600);
     try {
       await file.writeFile(content, "utf8");
+      if (existing) await file.chmod(existing.mode & 0o7777);
       await file.sync();
     } finally {
       await file.close();

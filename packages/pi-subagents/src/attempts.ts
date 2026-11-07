@@ -18,6 +18,10 @@ export class Attempt {
   resolve!: (view: AgentView) => void;
   finalizing?: Promise<void>;
   consumed = false;
+  /** An unsettled record restored from disk is read-only and never a completion. */
+  restoredUnsettled = false;
+  /** Shutdown cancels delivery permanently, independently of branch receipts. */
+  deliverySuppressed = false;
   permit?: string;
   readonly children = new Set<string>();
   readonly waitingChildren = new Set<string>();
@@ -246,6 +250,7 @@ export class Attempt {
     finishedAt?: number,
     includeTranscript = true,
   ): Promise<void> {
+    if (this.restoredUnsettled) return;
     const transcript = includeTranscript ? this.view.transcript : undefined;
     const write = this.writeTail.then(() =>
       writeAttempt(this, state, error, finishedAt, transcript),

@@ -6,7 +6,19 @@ Run root `pnpm lint`, `pnpm fmt:check`, and `pnpm typecheck` after local changes
 
 ## Verified in Pi
 
-These checks predate the simplification that changed delivery, usage accounting, mentions, storage, and the supervisor layout. Run them again before release.
+Checked after the simplification:
+
+- Parallel background agents through codemode, grouped delivery (`join: "group"`), and idle completion delivery.
+- Stop, resume through a mention, restart, Ctrl+B handoff, and steering.
+- Branch delivery after `/tree`, and restore after `/reload`.
+- Nested delegation with a foreground child, including the parent-child tree and usage roll-up.
+- Denied tools inside codemode, by name, by pattern, and for MCP tools.
+- Every `subagents:*` event payload, from a temporary listener extension.
+- Queuing at capacity 1, unknown agent types, titles, the one-line answer on finished cards, and `mentionContext` on and off.
+
+The review fixes after these checks changed delivery, restore, shutdown, definition saves, and output cleaning. Run the "Review fixes" section and repeat the `/tree` and grouped delivery checks before release.
+
+These checks predate the simplification. Run them again before release:
 
 - Started ten background child agents in parallel through codemode and observed their completion messages.
 - Created and saved a project agent definition through the supervisor UI.
@@ -63,19 +75,17 @@ If this package is already loaded in the current Pi session, use `/reload` inste
 5. Select each agent with the arrows. Press Tab to focus the preview. Press Enter for Conversation, `d` for Details, and Escape to return.
 6. Make sure that task names lead the list. UUIDs, cache counters, and full file paths must appear only in Details.
 7. In a narrow pane, make sure that the list uses two lines per agent. Make sure that status labels and elapsed times each align on their right edge. The selected output must use at most three lines and must not repeat its task heading or status. With ten agents in a pane about 50 rows high, all ten must appear. For a larger fleet or shorter pane, make sure that the range indicator identifies the visible agents and arrows reach the rest. Press Tab to focus the compact preview and check scrolling.
-8. Close the panel. Each collapsed inline result must use at most two lines. A call heading must not repeat above its result.
+8. Close the panel. A collapsed running result must use two lines: task and activity. A finished one must use three: task, summary, and one answer or error line. A call heading must not repeat above its result.
 9. Make sure that each background attempt produces one completion. The active status line must disappear after both settle.
 10. Capture wide, narrow, short, fullscreen, light-theme, and dark-theme views. Press `f` to toggle fullscreen. Resize while the panel remains open.
 
 Pass requires real screenshots and consistent live state. If the layout or behavior fails, record the failure before continuing.
 
-## First maintainer review
+## Tool output in Preview
 
-The first screenshots show a centered supervisor and a running counting agent. Conversation contains partial bash output. Preview incorrectly shows an empty placeholder, status exposes the full loop, and tool calls use a generic JSON block.
+Preview shows tool output before a final answer exists. Shell status uses a short label. Conversation uses unboxed tool output, while Details keeps the full arguments.
 
-The follow-up changes show tool output in Preview before a final answer exists. Shell status uses a short label. Conversation uses unboxed tool output, while Details keeps the full arguments.
-
-After reload, repeat the counting task. Make sure that each new number appears on its own line in Preview. Open Conversation and make sure that the tool output has no JSON argument block or large background fill. Scroll up, make sure that the header says “Scroll paused”, and press End to follow again. Open Details to read the full shell command. These fixes still need a real Pi recheck.
+Start a counting task that prints one number per second. Make sure that each new number appears on its own line in Preview. Open Conversation and make sure that the tool output has no JSON argument block or large background fill. Scroll up, make sure that the header says “Scroll paused”, and press End to follow again. Open Details to read the full shell command. These fixes still need a real Pi recheck.
 
 ## Conversation speakers
 
@@ -222,6 +232,10 @@ All of these cases remain pending until observed in Pi:
 - [ ] Try scalar and comma-separated values for each list field. Make sure that the error explains the YAML list format and leaves the file unchanged. Replace them with block or flow lists and reload.
 - [ ] Reject unknown fields (including worktree settings), repeated aliases, and invalid field types. Keep nested delegation off when `allowed_subagents` is absent. Save and reload a definition through the editor without changing its permissions.
 - [ ] Create, edit, disable, enable, and eject definitions. Make sure that package and unrelated files remain unchanged.
+- [ ] Create a definition with the name of an existing one. A confirmation must appear. Cancel it and make sure that the file is unchanged.
+- [ ] Disable a local definition through settings, then edit and save it. The file must not gain `enabled: false`.
+- [ ] Set `enabled: false` in `~/.agents/agents/<name>.md`, then Enable it in a trusted project. The same file must change, and no copy must appear in `.pi/agents`.
+- [ ] Save a definition in a symlinked `~/.agents/agents` folder. The save must succeed. Saving to a symlinked file must fail and leave the link intact.
 - [ ] Exercise trusted project, user, and package precedence. Refuse untrusted project configuration.
 - [ ] Select a registered custom provider and model. Exercise inherited context after branch changes and compaction.
 - [ ] Enforce allowed and denied tools, current model scope, extension isolation, `--no-extensions`, and `--no-mcp`.
@@ -235,11 +249,25 @@ All of these cases remain pending until observed in Pi:
 - [ ] Start a background agent, send another message, and let the completion arrive. In `/tree`, go back to the message before the completion and choose No summary. The completion must arrive on the new branch. Navigate back to the first branch: no duplicate must arrive. Navigate to before the start request: nothing must arrive.
 - [ ] Give a definition `allowed_subagents: [Explore]` and let its agent start a foreground Explore child. Pi must stay responsive and below normal CPU use while the child runs. The child must appear indented under its parent, and the parent's usage must include the child's.
 - [ ] Subscribe to every `subagents:*` event from a test extension. Make sure that each payload matches the README, including `owner` and `state`.
-- [ ] Force startup failure and a small turn budget. Preserve partial output and show unfinished work rather than claiming task success.
+- [ ] Force startup failure and a small turn budget. Preserve partial output and show unfinished work rather than claiming task success. With `max_turns: 1` and a task that needs a tool, the result must say that the turn limit was reached.
 - [ ] Request immediate resume while cleanup runs. Refuse it until settlement. Repeat stop without overlapping attempts.
 - [ ] Reload, switch sessions, and shut down during startup, nested waits, and active work. Make sure that no old UI listener or late child survives.
 - [ ] Run an immediate headless task. Background work must settle without terminal-only calls. Save its output and errors.
 - [ ] Inspect idle behavior. There must be no idle polling or per-card timer.
+
+## Review fixes
+
+All of these cases remain pending until observed in Pi:
+
+- [ ] Ask an agent to `cat` a file that contains `printf '\033[2J\033]52;c;aGk=\a'` output. Conversation and Preview must not clear the screen or change the clipboard.
+- [ ] Start two background agents that run `sleep 30`, then `/reload` before they finish. No completion and no new model turn must follow. Repeat with `/new`, then `/resume` the first session. Their cancelled results must stay readable in `/agents`.
+- [ ] Kill Pi while a background agent runs. Reopen the session and use `/tree` to move to a branch that started the agent. No completion must arrive, and the saved record must stay unchanged on disk.
+- [ ] Start two grouped agents, one short and one longer than 30 seconds, and stay idle. The short result must arrive at the 30-second deadline without another prompt.
+- [ ] Start a background child and force auto-compaction to fail. The completion must still arrive.
+- [ ] Start an agent with `isolated: true`, then resume it with `isolated: false`. The resumed attempt must stay isolated.
+- [ ] Start Pi with `-nc` and `-ns`. A new child must load no AGENTS.md files and no skills.
+- [ ] Add one invalid definition file and start several agents. The catalog warning must appear once, not once per agent.
+- [ ] Add an `explore` project definition and finish an `Explore` agent. `r` and `R` must stay available in the supervisor.
 
 ## Unsupported features
 

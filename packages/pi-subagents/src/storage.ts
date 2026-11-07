@@ -68,8 +68,13 @@ const recordSchema = Type.Object({
   sessionFile: Type.Optional(Type.String()),
   /** False when the SDK session cleanup was not confirmed. Resume is then blocked. */
   cleanupSafe: Type.Boolean(),
-  /** `inline`: a foreground result. `pending`/`consumed`: background delivery state. */
-  delivery: Type.Union([Type.Literal("inline"), Type.Literal("pending"), Type.Literal("consumed")]),
+  /** `suppressed`: shutdown cancelled delivery on every branch. */
+  delivery: Type.Union([
+    Type.Literal("inline"),
+    Type.Literal("pending"),
+    Type.Literal("consumed"),
+    Type.Literal("suppressed"),
+  ]),
 });
 
 type AttemptRecord = Static<typeof recordSchema>;
@@ -113,7 +118,13 @@ function toRecord(
     thinking: view.thinking,
     sessionFile: view.sessionFile,
     cleanupSafe: attempt.cleanupSafe,
-    delivery: attempt.consumed ? "consumed" : view.background ? "pending" : "inline",
+    delivery: attempt.deliverySuppressed
+      ? "suppressed"
+      : attempt.consumed
+        ? "consumed"
+        : view.background
+          ? "pending"
+          : "inline",
   };
 }
 
@@ -182,7 +193,7 @@ async function restore(
   branch: BranchState,
 ): Promise<Attempt> {
   const definition = parseAgent(saved.definition, `${saved.id}.md`, saved.source);
-  // A record that was not settled belongs to a process that no longer controls it.
+  // An unsettled record may still belong to another live process; never rewrite it.
   const savedState =
     saved.state === "completed" || saved.state === "cancelled" || saved.state === "failed"
       ? saved.state
@@ -237,9 +248,12 @@ async function restore(
   const attempt = new Attempt(manager, view, saved.request);
   attempt.instructions = saved.instructions;
   attempt.cleanupSafe = cleanupSafe;
+  attempt.restoredUnsettled = !settled;
+  attempt.deliverySuppressed = saved.delivery === "suppressed";
   // The current branch decides background delivery: a main-session result is pending only when
   // this branch started the agent and does not have its result yet. /tree navigation re-checks.
   attempt.consumed =
+    attempt.deliverySuppressed ||
     saved.delivery === "inline" ||
     !settled ||
     !sameOwner(saved.owner, manager.root) ||

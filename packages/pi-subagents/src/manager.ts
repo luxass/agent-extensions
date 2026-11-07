@@ -198,13 +198,19 @@ export class AgentManager {
         saved?.request.max_turns ??
         definition.maxTurns ??
         this.catalog.settings.maxTurns,
-      isolated: input.isolated ?? saved?.request.isolated,
+      // Resume cannot relax isolation; only restart may change it.
+      isolated: saved?.request.isolated === true ? true : input.isolated,
     });
     const attemptId = randomUUID();
     const view: AgentView = {
       id,
       attemptId,
-      attemptNumber: (this.agents.get(id)?.attempts.length ?? 0) + 1,
+      // Restoration can skip unreadable attempts, so count from the highest known number.
+      attemptNumber:
+        Math.max(
+          0,
+          ...(this.agents.get(id)?.attempts ?? []).map((item) => item.view.attemptNumber),
+        ) + 1,
       owner: { ...owner },
       depth,
       name,

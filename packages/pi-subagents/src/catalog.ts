@@ -35,15 +35,29 @@ import {
   safeName,
 } from "./io.ts";
 
+/** Thrown when a save would replace a different existing file and the caller did not allow it. */
+export class OverwriteError extends Error {
+  constructor(readonly path: string) {
+    super(`${path} already exists.`);
+  }
+}
+
+export interface SaveOptions {
+  /** Replace an existing file at the destination that is not the definition's own file. */
+  overwrite?: boolean;
+}
+
 export interface Catalog {
   settings: Settings;
   definitions(): readonly AgentDefinition[];
+  /** The definition as loaded from its file, without settings such as disabledAgents. */
+  stored(name: string): Readonly<AgentDefinition> | undefined;
   resolve(name: string): Readonly<AgentDefinition>;
   reload(): Promise<void>;
   saveSettings(patch: Partial<Settings>): Promise<void>;
   toggle(name: string): Promise<void>;
   eject(name: string): Promise<string>;
-  saveDefinition(definition: AgentDefinition): Promise<string>;
+  saveDefinition(definition: AgentDefinition, options?: SaveOptions): Promise<string>;
   prompt(definition: AgentDefinition): Promise<string>;
   warnings: readonly string[];
 }
@@ -64,7 +78,8 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
   let intrinsic = new Map<string, AgentDefinition>();
   let skills = new Map<string, Skill>();
   let warnings: string[] = [];
-  // Serialize reloads and local mutations, while file locks serialize other processes.
+  let previousWarnings = new Set<string>();
+  // Serialize reloads and local mutations in this process.
   let queue: Promise<void> = Promise.resolve();
 
   function enqueue<T>(action: () => Promise<T>): Promise<T> {
@@ -87,6 +102,20 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
       warn(`${path}: ${String(error)} File left unchanged; repair or move it before saving.`);
       return {};
     }
+  }
+
+  /** Agent folders in load order. Later roots win; project .pi is more specific than project .agents. */
+  function agentRoots(trusted: boolean): { dir: string; source: "project" | "user" }[] {
+    return [
+      { dir: universalDir, source: "user" },
+      { dir: agentDir, source: "user" },
+      ...(trusted
+        ? [
+            { dir: join(cwd, ".agents"), source: "project" as const },
+            { dir: join(cwd, ".pi"), source: "project" as const },
+          ]
+        : []),
+    ];
   }
 
   async function reload(): Promise<void> {
@@ -122,17 +151,7 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     }
 
     for (const resource of packaged) await addAgent(resource, "package");
-    // Later roots win. Project .pi is more specific than project .agents.
-    const roots: { dir: string; source: "project" | "user" }[] = [
-      { dir: universalDir, source: "user" },
-      { dir: agentDir, source: "user" },
-      ...(trusted
-        ? [
-            { dir: join(cwd, ".agents"), source: "project" as const },
-            { dir: join(cwd, ".pi"), source: "project" as const },
-          ]
-        : []),
-    ];
+    const roots = agentRoots(trusted);
     for (const root of roots) {
       const agentRoot = join(root.dir, "agents");
       try {
@@ -197,10 +216,13 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
       key(a.name).localeCompare(key(b.name), "en"),
     );
     skills = nextSkills;
-    if (ctx.hasUI && warnings.length > 0) {
-      const preview = warnings.slice(0, 8).join("\n");
+    // Reloads run on every Agent call, so report only warnings the previous load did not have.
+    const fresh = warnings.filter((warning) => !previousWarnings.has(warning));
+    previousWarnings = new Set(warnings);
+    if (ctx.hasUI && fresh.length > 0) {
+      const preview = fresh.slice(0, 8).join("\n");
       const remaining =
-        warnings.length > 8 ? `\n${warnings.length - 8} more catalog warnings were recorded.` : "";
+        fresh.length > 8 ? `\n${fresh.length - 8} more catalog warnings were recorded.` : "";
       ctx.ui.notify(`Subagent catalog:\n${preview}${remaining}`, "warning");
     }
   }
@@ -230,10 +252,8 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     await reload();
   }
 
-  async function ejectDefinition(
-    definition: AgentDefinition,
-    enableExisting = false,
-  ): Promise<string> {
+  /** Copy a built-in or package definition to a local file that shadows it. */
+  async function ejectDefinition(definition: AgentDefinition): Promise<string> {
     const root = ctx.isProjectTrusted() ? cwd : agentDir;
     const directory = ctx.isProjectTrusted()
       ? join(cwd, ".pi", "agents")
@@ -242,20 +262,54 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     await safeDestination(root, path);
     try {
       await lstat(path);
-      if (!enableExisting) throw new Error(`Refusing to overwrite ${path}.`);
-      const existing = parseAgent(
-        await readText(path),
-        path,
-        ctx.isProjectTrusted() ? "project" : "user",
-      );
-      if (key(existing.name) !== key(definition.name))
-        throw new Error(`Refusing to overwrite unrelated agent ${path}.`);
-      // Enabling an explicitly disabled local definition is a targeted config change.
-      definition = { ...existing, enabled: true };
+      throw new Error(`Refusing to overwrite ${path}.`);
     } catch (error) {
       if (!isMissing(error)) throw error;
     }
     await atomicWrite(path, serializeAgent(definition));
+    await reload();
+    return path;
+  }
+
+  async function writeDefinition(
+    definition: AgentDefinition,
+    options: SaveOptions = {},
+  ): Promise<string> {
+    const trusted = ctx.isProjectTrusted();
+    const user = definition.source === "user" || !trusted;
+    const source = user ? "user" : "project";
+    const directory = user ? join(agentDir, "agents") : join(cwd, ".pi", "agents");
+    const own =
+      definition.file !== undefined &&
+      (definition.source === "project" || definition.source === "user");
+    const path =
+      own && definition.file
+        ? resolve(definition.file)
+        : join(directory, `${safeName(definition.name)}.md`);
+    // Use the folder the file loads from as the root, so a symlinked agents folder can be saved.
+    const root = agentRoots(trusted)
+      .filter((candidate) => candidate.source === source)
+      .map((candidate) => join(candidate.dir, "agents"))
+      .find((candidate) => contained(candidate, path));
+    if (!root) throw new Error(`Unsafe destination: ${path}`);
+    await safeDestination(root, path);
+    // Project files must also stay inside the trusted project.
+    if (!user) await safeDestination(cwd, path);
+    const normalized = parseAgent(serializeAgent(definition), path, source);
+    const content = serializeAgent(normalized);
+    // Match the load limit, so a successful save can always be reloaded.
+    if (Buffer.byteLength(content) > maxResourceBytes)
+      throw new Error("The definition exceeds 1 MiB and was not saved.");
+    try {
+      await lstat(path);
+      if (!own && !options.overwrite) throw new OverwriteError(path);
+      const existing = parseAgent(await checkedFile({ root, file: path }), path, source);
+      if (key(existing.name) !== key(normalized.name))
+        throw new Error("Refusing to overwrite another agent's configuration.");
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+    }
+    await atomicWrite(path, content);
     await reload();
     return path;
   }
@@ -270,6 +324,8 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
     },
 
     definitions: () => definitions,
+
+    stored: (name) => intrinsic.get(key(name)),
 
     resolve(name) {
       const definition = lookup.get(key(name));
@@ -294,7 +350,10 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
         const definition = intrinsic.get(id);
         if (!definition) throw new Error(`Unknown subagent: ${name}`);
         if (!definition.enabled) {
-          await ejectDefinition({ ...definition, enabled: true }, true);
+          // Local files change in place. Built-in and package agents get a local enabled copy.
+          if (definition.source === "user" || definition.source === "project")
+            await writeDefinition({ ...definition, enabled: true });
+          else await ejectDefinition({ ...definition, enabled: true });
           await persist({}, id, true);
         } else {
           await persist({}, id);
@@ -308,39 +367,7 @@ export async function createCatalog(ctx: ExtensionContext): Promise<Catalog> {
         return ejectDefinition(definition);
       }),
 
-    saveDefinition: (definition) =>
-      enqueue(async () => {
-        const user = definition.source === "user" || !ctx.isProjectTrusted();
-        const directory = user ? join(agentDir, "agents") : join(cwd, ".pi", "agents");
-        const path =
-          definition.file && (definition.source === "project" || definition.source === "user")
-            ? resolve(definition.file)
-            : join(directory, `${safeName(definition.name)}.md`);
-        const root = user
-          ? [agentDir, universalDir].find((candidate) => contained(join(candidate, "agents"), path))
-          : cwd;
-        if (!root) throw new Error(`Unsafe destination: ${path}`);
-        await safeDestination(root, path);
-        const normalized = parseAgent(serializeAgent(definition), path, user ? "user" : "project");
-        const content = serializeAgent(normalized);
-        // Match the load limit, so a successful save can always be reloaded.
-        if (Buffer.byteLength(content) > maxResourceBytes)
-          throw new Error("The definition exceeds 1 MiB and was not saved.");
-        try {
-          const existing = parseAgent(
-            await checkedFile({ root, file: path }),
-            path,
-            normalized.source,
-          );
-          if (key(existing.name) !== key(normalized.name))
-            throw new Error("Refusing to overwrite another agent's configuration.");
-        } catch (error) {
-          if (!isMissing(error)) throw error;
-        }
-        await atomicWrite(path, content);
-        await reload();
-        return path;
-      }),
+    saveDefinition: (definition, options) => enqueue(() => writeDefinition(definition, options)),
 
     prompt: (definition) => agentPrompt(definition, skills, ctx),
   };

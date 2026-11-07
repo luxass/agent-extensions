@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 import { settingsSchema, type AgentDefinition, type Settings } from "./agents.ts";
+import { OverwriteError } from "./catalog.ts";
 import type { AgentManager } from "./manager.ts";
 import { animationClock, counts } from "./render.ts";
 import { openSupervisor } from "./supervisor.ts";
@@ -308,6 +309,17 @@ async function editDefinition(
   if (!name) return;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name))
     throw new Error("Use letters, numbers, underscores, or hyphens in the agent name.");
+  let overwrite = false;
+  if (!original) {
+    const existing = service.catalog.stored(name);
+    if (existing) {
+      overwrite = await ctx.ui.confirm(
+        "Agent exists",
+        `${existing.name} already exists (${existing.file ?? existing.source}). Saving replaces or overrides it. Continue?`,
+      );
+      if (!overwrite) return;
+    }
+  }
   const description = await ctx.ui.editor("Description", original?.description ?? "");
   if (description === undefined) return;
   const prompt = await ctx.ui.editor("System prompt", original?.prompt ?? "");
@@ -349,7 +361,15 @@ async function editDefinition(
     ]);
     if (action === undefined) return;
     if (action === "Save") {
-      await service.catalog.saveDefinition(draft);
+      try {
+        await service.catalog.saveDefinition(draft, { overwrite });
+      } catch (error) {
+        if (!(error instanceof OverwriteError)) throw error;
+        if (!(await ctx.ui.confirm("Overwrite", `${error.path} already exists. Overwrite?`)))
+          continue;
+        overwrite = true;
+        await service.catalog.saveDefinition(draft, { overwrite });
+      }
       service.changed();
       ctx.ui.notify(`Saved ${name}`, "info");
       return;
@@ -451,7 +471,9 @@ async function configurations(ctx: ExtensionContext, service: AgentManager): Pro
           `${definition.name} · saved prompt (view only)`,
           await service.catalog.prompt(definition),
         );
-      else if (action === "Edit definition") await editDefinition(ctx, service, definition);
+      // Edit the file's own values, so disabledAgents does not leak into the saved file.
+      else if (action === "Edit definition")
+        await editDefinition(ctx, service, service.catalog.stored(definition.name) ?? definition);
       else if (action === "Eject to project") {
         ctx.ui.notify(await service.catalog.eject(definition.name), "info");
         service.changed();

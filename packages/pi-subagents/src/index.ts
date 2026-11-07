@@ -64,8 +64,6 @@ export default function subagents(pi: ExtensionAPI): void {
       created.onComplete = (view) => outbox.add(view);
       created.onBoundary = (owner, state, context) => outbox.boundary(owner, state, context);
       disposeUi = attachUi(pi, created);
-      if (catalog.warnings.length && ctx.hasUI)
-        ctx.ui.notify(`Subagent catalog:\n${catalog.warnings.join("\n")}`, "warning");
       for (const view of created.undelivered()) outbox.add(view);
       return created;
     })();
@@ -105,7 +103,7 @@ export default function subagents(pi: ExtensionAPI): void {
   pi.on("session_tree", (_event, ctx) => delivery?.rebranch(ctx));
   // Wait one tick, so the session is idle again after compaction.
   pi.on("session_compact", () => delivery?.schedule(0));
-  pi.on("session_compact_failed", () => delivery?.schedule());
+  pi.on("session_compact_failed", () => delivery?.schedule(0));
 
   pi.on("agent_before_settle", async (state, ctx) => {
     const service = manager;
@@ -143,7 +141,22 @@ export default function subagents(pi: ExtensionAPI): void {
     disposeUi?.();
     disposeUi = undefined;
     offWarnings();
+    const cancelled = [...(manager?.attempts.values() ?? [])].filter(
+      (attempt) => !isSettled(attempt.view.state),
+    );
+    for (const attempt of cancelled) {
+      attempt.deliverySuppressed = true;
+      attempt.consumed = true;
+    }
     await manager?.dispose();
+    // A terminal write may already have been in flight when shutdown started.
+    await Promise.all(
+      cancelled.map((attempt) =>
+        attempt
+          .persist(attempt.view.state, attempt.view.error, attempt.view.finishedAt, false)
+          .catch(warn),
+      ),
+    );
     await startup?.catch(() => undefined);
     manager = undefined;
     startup = undefined;

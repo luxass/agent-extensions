@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 import type { Settings } from "./agents.ts";
-import { outputPreview, type OutputPreview } from "./render.ts";
+import { outputPreview, plain, type OutputPreview } from "./render.ts";
 import { contentText, toolActivity } from "./transcript.ts";
 import { isSettled, type AgentView, type TranscriptRow } from "./types.ts";
 
@@ -112,17 +112,19 @@ export class ConversationPane {
   }
 
   private component(row: TranscriptRow): Component | undefined {
-    if (row.kind === "user" || row.kind === "extension")
-      return row.text.trim()
+    if (row.kind === "user" || row.kind === "extension") {
+      const text = plain(row.text);
+      return text.trim()
         ? row.kind === "user" && this.mode === "all"
-          ? new Markdown(row.text, 0, 0, getMarkdownTheme(), undefined, {
+          ? new Markdown(text, 0, 0, getMarkdownTheme(), undefined, {
               preserveOrderedListMarkers: true,
               preserveBackslashEscapes: true,
             })
-          : new Text(row.text, 0, 0)
+          : new Text(text, 0, 0)
         : undefined;
+    }
     if (row.kind === "assistant") {
-      const text = contentText(row.message.content).trim();
+      const text = plain(contentText(row.message.content)).trim();
       if (!text) return this.warning(row) ? new Text("", 0, 0) : undefined;
       return this.mode === "off"
         ? new Text(text, 0, 0)
@@ -133,10 +135,14 @@ export class ConversationPane {
     const status = row.pending
       ? toolActivity(row.name, row.args)
       : `${row.name} · ${row.error ? "Failed" : "Finished"}`;
-    const output = row.text
+    const output = plain(row.text)
       .split("\n")
       .map((line) => this.theme.fg(row.error ? "error" : "toolOutput", line));
-    return new Text([this.theme.fg("dim", status), ...(row.text ? output : [])].join("\n"), 0, 0);
+    return new Text(
+      [this.theme.fg("dim", plain(status)), ...(row.text ? output : [])].join("\n"),
+      0,
+      0,
+    );
   }
 
   render(
@@ -191,9 +197,9 @@ export class ConversationPane {
           if (
             (entry?.component instanceof Markdown || entry?.component instanceof Text) &&
             row.kind === "assistant" &&
-            contentText(row.message.content).trim()
+            plain(contentText(row.message.content)).trim()
           ) {
-            entry.component.setText(contentText(row.message.content).trim());
+            entry.component.setText(plain(contentText(row.message.content)).trim());
             entry = { row, component: entry.component, width: 0, lines: [] };
           } else {
             const component = this.component(row);
@@ -215,7 +221,7 @@ export class ConversationPane {
             row.kind === "assistant"
               ? this.reader
                 ? "Agent"
-                : `Agent · ${view.name}`
+                : `Agent · ${plain(view.name)}`
               : row.kind === "extension"
                 ? notice
                   ? `▾ Extension · ${title}`
@@ -240,7 +246,7 @@ export class ConversationPane {
         );
         if (warning)
           lines.push(
-            ...new Text(this.theme.fg("error", warning), 0, 0)
+            ...new Text(this.theme.fg("error", plain(warning)), 0, 0)
               .render(bodyWidth)
               .map((line) => replyPrefix + line),
           );
@@ -319,12 +325,12 @@ export class PreviewPane {
       this.text = text;
       this.width = width;
       if (source.kind === "answer") {
-        this.markdown = new Markdown(source.text, 0, 0, getMarkdownTheme());
+        this.markdown = new Markdown(plain(source.text), 0, 0, getMarkdownTheme());
         this.lines = this.markdown.render(width);
       } else {
         this.markdown = undefined;
         this.lines = new Text(
-          source.label ? `${source.label}\n\n${source.text}` : source.text,
+          plain(source.label ? `${source.label}\n\n${source.text}` : source.text),
           0,
           0,
         ).render(width);
@@ -343,17 +349,21 @@ export function detailLines(view: AgentView, theme: Theme, width: number): strin
   const args = tool?.kind === "tool" ? JSON.stringify(tool.args, null, 2) : undefined;
   const lines = [
     theme.fg("accent", "Execution"),
-    `Agent: ${view.id}`,
-    `Attempt: ${view.attemptNumber} · ${view.attemptId}`,
-    `Owner: ${view.owner.id}${view.owner.attemptId ? ` / ${view.owner.attemptId}` : ""}`,
-    `Model: ${view.model ?? definition.model ?? "default"} · thinking: ${view.thinking ?? definition.thinking ?? "default"}`,
+    plain(`Agent: ${view.id}`),
+    plain(`Attempt: ${view.attemptNumber} · ${view.attemptId}`),
+    plain(`Owner: ${view.owner.id}${view.owner.attemptId ? ` / ${view.owner.attemptId}` : ""}`),
+    plain(
+      `Model: ${view.model ?? definition.model ?? "default"} · thinking: ${view.thinking ?? definition.thinking ?? "default"}`,
+    ),
     "",
     theme.fg("accent", "Permissions"),
-    `Policy: saved instructions and tool permissions · ${definition.source}`,
-    `Tools: ${definition.tools?.join(", ") ?? "inherited"}`,
-    `Denied tools: ${definition.disallowedTools.join(", ") || "none"}`,
-    `May delegate: ${definition.allowedSubagents.join(", ") || "none"}`,
-    `Skills: ${definition.skills.join(", ") || "none"} · memory: ${definition.memory ?? "off"}`,
+    plain(`Policy: saved instructions and tool permissions · ${definition.source}`),
+    plain(`Tools: ${definition.tools?.join(", ") ?? "inherited"}`),
+    plain(`Denied tools: ${definition.disallowedTools.join(", ") || "none"}`),
+    plain(`May delegate: ${definition.allowedSubagents.join(", ") || "none"}`),
+    plain(
+      `Skills: ${definition.skills.join(", ") || "none"} · memory: ${definition.memory ?? "off"}`,
+    ),
     "",
     theme.fg("accent", "Usage"),
     `Usage: ${view.usage.input} input · ${view.usage.output} output · $${view.usage.cost.toFixed(4)}`,
@@ -362,15 +372,15 @@ export function detailLines(view: AgentView, theme: Theme, width: number): strin
     `Turns: ${view.turns} · tool calls: ${view.toolCalls}`,
     "",
     theme.fg("accent", "Files"),
-    `Session: ${view.sessionFile ?? "not available"}`,
-    `Saved output: ${view.outputFile}`,
-    ...(view.error ? [`Error: ${view.error}`] : []),
-    ...(view.resumeBlocked ? [`Resume unavailable: ${view.resumeBlocked}`] : []),
+    plain(`Session: ${view.sessionFile ?? "not available"}`),
+    plain(`Saved output: ${view.outputFile}`),
+    ...(view.error ? [plain(`Error: ${view.error}`)] : []),
+    ...(view.resumeBlocked ? [plain(`Resume unavailable: ${view.resumeBlocked}`)] : []),
     ...(args
       ? [
           "",
-          `Latest tool: ${tool?.kind === "tool" ? tool.name : ""}`,
-          args.slice(0, 12000),
+          plain(`Latest tool: ${tool?.kind === "tool" ? tool.name : ""}`),
+          plain(args.slice(0, 12000)),
           ...(args.length > 12000
             ? ["Arguments truncated here. Read the SDK session for the complete call."]
             : []),
