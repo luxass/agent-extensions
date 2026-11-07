@@ -349,6 +349,21 @@ importers:
         specifier: catalog:pi
         version: 1.4.0
 
+  packages/pi-subagents:
+    devDependencies:
+      '@earendil-works/pi-ai':
+        specifier: catalog:pi
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.10.2)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-coding-agent':
+        specifier: catalog:pi
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-tui':
+        specifier: catalog:pi
+        version: 1.4.0
+      typebox:
+        specifier: catalog:schema
+        version: 1.4.2
+
   packages/pi-voice:
     dependencies:
       '@luxass/agent-voice':

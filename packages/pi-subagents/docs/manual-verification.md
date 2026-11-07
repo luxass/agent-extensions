@@ -1,0 +1,278 @@
+# Manual verification
+
+This script is for the maintainer's real Pi review. Runtime verification is partial. Static checks cannot prove layout, focus, cancellation, or delivery behavior. Do not use covers or synthetic previews as acceptance evidence.
+
+Run root `pnpm lint`, `pnpm fmt:check`, and `pnpm typecheck` after local changes. Run `git diff --check` too. Only the cases in the next section are recorded as verified.
+
+## Verified in Pi
+
+Checked after the simplification:
+
+- Parallel background agents through codemode, grouped delivery (`join: "group"`), and idle completion delivery.
+- Stop, resume through a mention, restart, Ctrl+B handoff, and steering.
+- Branch delivery after `/tree`, and restore after `/reload`.
+- Nested delegation with a foreground child, including the parent-child tree and usage roll-up.
+- Denied tools inside codemode, by name, by pattern, and for MCP tools.
+- Every `subagents:*` event payload, from a temporary listener extension.
+- Queuing at capacity 1, unknown agent types, titles, the one-line answer on finished cards, and `mentionContext` on and off.
+
+The review fixes after these checks changed delivery, restore, shutdown, definition saves, and output cleaning. Run the "Review fixes" section and repeat the `/tree` and grouped delivery checks before release.
+
+These checks predate the simplification. Run them again before release:
+
+- Started ten background child agents in parallel through codemode and observed their completion messages.
+- Created and saved a project agent definition through the supervisor UI.
+- Reloaded Pi, then edited and saved definitions under `~/.pi/agent/agents`, `~/.agents/agents`, `.pi/agents`, and `.agents/agents`.
+- Confirmed each save notification and checked the changed file at its original path. Removed the demo definitions afterward.
+- Collected a completed background result through codemode while the main script was still busy. No automatic completion followed collection.
+- Reloaded Pi and collected that result again. No completion was replayed.
+- Left another result uncollected during a busy script. Its completion was committed after the script result and before the next assistant response.
+- Observed an idle-session completion after the main response had finished.
+- Ran a print-mode background task and observed its completion before the process exited successfully.
+
+A short agent with `max_turns: 10001` finished after one turn. Its saved request retained that limit. After `/reload`, `get_subagent_result` returned its completed answer.
+
+`list_subagent_models` returned 64 sorted, unique model IDs in a fresh Pi session. A separate codemode call returned the same IDs as a structured `models` array. Neither call started an agent. Inline checks covered current-list reads, empty lists, scope filtering, cancellation, registration, and the child-session guard. Live nested discovery and model-default checks remain pending.
+
+The remaining cases below still need verification.
+
+## Preparation
+
+Use Pi 1.4.0 or newer with Node.js 24 and a configured model. Use a disposable checkout for tasks that change files. Load only this implementation of `Agent`. Keep your normal global definitions and credentials unchanged.
+
+From this repository's root, start Pi:
+
+```sh
+pi -e ./packages/pi-subagents
+```
+
+If this package is already loaded in the current Pi session, use `/reload` instead. Stop if Pi reports duplicate tools or extension errors. Record the Pi version, model, theme, terminal dimensions, expected behavior, actual behavior, and screenshot for each case.
+
+## Model discovery and defaults
+
+- Call `list_subagent_models` directly and through codemode. Make sure that both return sorted, unique `provider/modelId` values from Pi's available-model list. No agent or model request must start.
+- Repeat in a disposable profile with no available models. Make sure that the result contains an empty `models` array and explains that no explicit model overrides are available.
+- In a disposable profile, enable `scopeModels` and restrict the parent's model scope. Make sure that discovery lists only permitted explicit overrides. An empty scope keeps the existing unrestricted behavior. Restore the profile afterward.
+- Give a disposable agent definition a default `model`. Start it without a model argument, then with an explicit available model. Make sure that the definition's default and explicit override each take effect. Without either value, make sure that it inherits its immediate parent's model. Resume must retain the saved model unless overridden.
+- Give a delegating child permission to use `list_subagent_models`, then repeat without that permission. Make sure that the tool follows its tool allowlist and denied tools. Remove only definitions created for this check.
+
+## First visual pass
+
+1. At idle, make sure that no fleet strip, status line, or navigation help occupies the main conversation.
+2. Send this prompt:
+
+   ```text
+   Start two general-purpose agents in parallel, both in the background.
+   Name the first cp1-short and describe it as "Short timing probe".
+   Its task: run bash with "sleep 8", then reply exactly SHORT_DONE.
+   Name the second cp1-long and describe it as "Long timing probe".
+   Its task: run bash with "sleep 20", then reply exactly LONG_DONE.
+   Do not wait for them and do not change files.
+   ```
+
+3. Open `/agents` before they finish. Keep it open through both completions.
+4. Make sure that the list, counts, preview, and state update without reopening the panel. The selected agent must not jump.
+5. Select each agent with the arrows. Press Tab to focus the preview. Press Enter for Conversation, `d` for Details, and Escape to return.
+6. Make sure that task names lead the list. UUIDs, cache counters, and full file paths must appear only in Details.
+7. In a narrow pane, make sure that the list uses two lines per agent. Make sure that status labels and elapsed times each align on their right edge. The selected output must use at most three lines and must not repeat its task heading or status. With ten agents in a pane about 50 rows high, all ten must appear. For a larger fleet or shorter pane, make sure that the range indicator identifies the visible agents and arrows reach the rest. Press Tab to focus the compact preview and check scrolling.
+8. Close the panel. A collapsed running result must use two lines: task and activity. A finished one must use three: task, summary, and one answer or error line. A call heading must not repeat above its result.
+9. Make sure that each background attempt produces one completion. The active status line must disappear after both settle.
+10. Capture wide, narrow, short, fullscreen, light-theme, and dark-theme views. Press `f` to toggle fullscreen. Resize while the panel remains open.
+
+Pass requires real screenshots and consistent live state. If the layout or behavior fails, record the failure before continuing.
+
+## Tool output in Preview
+
+Preview shows tool output before a final answer exists. Shell status uses a short label. Conversation uses unboxed tool output, while Details keeps the full arguments.
+
+Start a counting task that prints one number per second. Make sure that each new number appears on its own line in Preview. Open Conversation and make sure that the tool output has no JSON argument block or large background fill. Scroll up, make sure that the header says “Scroll paused”, and press End to follow again. Open Details to read the full shell command. These fixes still need a real Pi recheck.
+
+## Conversation speakers
+
+After reload, start a new general-purpose agent with `max_turns: 2`. Ask it to reply exactly `ROLE_CHECK` without tools or file changes. Open `/agents`, select the new agent, then press Enter.
+
+Make sure that each message has the correct speaker label:
+
+- `You` identifies the delegated request and user steering messages.
+- `Agent` identifies each model reply, with an accent-colored heading. The full-pane header shows the agent name.
+- `Extension` identifies generated follow-up instructions, with muted text.
+
+Make sure that routine extension instructions start as one-line notices. Press `n` to expand and collapse them. When Pi supplies mouse input, click an individual notice to toggle only that message. Errors and notices without a recorded category must remain visible.
+
+Conversation must open in full-pane reading without an extra key press. Make sure that one header replaces the floating border, counts, and repeated task headings. Agent replies must have an accent bar. User prompts must use quieter text. The header and footer must stay visible while messages scroll.
+
+Open Details with `d`, then press Escape to return to the same conversation. Press `f` to restore the floating conversation. Press Escape from full-pane reading to return to the normal agent list. Press Enter to make sure that Conversation opens full-pane again. Repeat after resizing to wide, narrow, and short panes. No text from the parent conversation must show through the reading view.
+
+Repeat with `viewerMarkdown` set to `off`, `assistant`, and `all`. Make sure that streaming, tool output, wrapping, and scroll position still work. Restore the original configuration afterward.
+
+Reload again and inspect the saved attempt. Its speaker labels must remain unchanged. Older saved messages lack source data and retain their original labels. Do not infer their authorship from matching text. This pass changes conversation presentation, not the known extra-turn behavior at the turn limit.
+
+## Streaming, scrolling, and focus
+
+Send this prompt:
+
+```text
+Start a background general-purpose agent named cp1-stream, described as
+"Streaming preview probe". Ask it to explain this repository's package
+layout in about 100 numbered lines. It must read files but not change them.
+```
+
+Open `/agents` and select `cp1-stream` while it works. Make sure that the preview shows the answer as it streams. Open Conversation. Scroll up with Page Up, then wait for more output. The scroll position must stay fixed. Press End to follow the end again. Switch to another agent and back. There must be no blank system section or duplicate messages.
+
+While the panel is open, press `s`. Type text that contains `f`, `x`, `r`, and arrow keys. Only the composer must receive them. Press Escape to cancel. Close the panel with an unfinished main-editor draft. Make sure that the draft and cursor position remain intact. With no foreground agent active, Ctrl+B must keep its normal editor behavior.
+
+## Foreground, handoff, stop, and collection
+
+Use this prompt for a foreground run:
+
+```text
+Start general-purpose in the foreground, named cp1-foreground, with the
+short description "Foreground probe". Ask it to run bash "sleep 20" and
+then reply FOREGROUND_DONE. Do not change files.
+```
+
+Press Ctrl+B in the main editor while it runs. Make sure that the foreground wait returns, the same attempt continues, and one background completion arrives. The agent must not restart.
+
+Repeat with `cp1-stop`. Open `/agents`, select `cp1-stop`, press `x`, then `y`. Make sure that stopping preserves partial output and waits for cleanup. Repeat stop through the controls available to the caller. It must not create a new attempt or duplicate completion.
+
+Ask Pi to fetch an existing background result with `get_subagent_result`, first with `wait: true` before completion, then again after completion. Collection before delivery must suppress the pending completion. Collection must not add usage to the main-session totals. Interrupting a result wait must leave the background agent running. Interrupting a foreground call before handoff must stop its child.
+
+Start a background child, then run manual compaction while it finishes. Its completion must arrive after compaction without another prompt. Repeat with cancelled compaction. These timing cases remain pending.
+
+Only foreground results add child usage to the main-session totals. Make sure that a foreground result adds its usage once, and that a background agent adds none, whether it is delivered or collected.
+
+## Capacity and nesting
+
+In the supervisor, press `,`. Temporarily set background capacity to 1, foreground capacity to 0, nested capacity per depth to 1, and maximum depth to 3. Record the old values so you can restore them.
+
+Start two background agents that each run `sleep 20`. Make sure that one runs and the other stays queued. Start foreground work while the background slot is full. It must use the separate foreground pool. Stop the queued attempt and make sure that it reaches the same settled cancellation path as a running attempt.
+
+In a disposable project, use `c` to create these definitions. Do not overwrite existing files:
+
+```yaml
+---
+name: cp1-parent
+description: Check owned nested delegation without editing files.
+tools:
+  - read
+  - grep
+  - find
+  - ls
+  - Agent
+  - get_subagent_result
+  - steer_subagent
+allowed_subagents:
+  - cp1-branch
+---
+Use Agent to ask cp1-branch to delegate one read-only lookup to Explore.
+Omit run_in_background so each nested call waits for its result.
+Return the result to your parent. Do not change files.
+```
+
+```yaml
+---
+name: cp1-branch
+description: Check a deeper read-only child.
+tools:
+  - read
+  - grep
+  - find
+  - ls
+  - Agent
+  - get_subagent_result
+  - steer_subagent
+allowed_subagents:
+  - Explore
+---
+Ask Explore to locate package.json and report its package name.
+Wait for its result. Do not change files.
+```
+
+Run `cp1-parent` in the foreground while the top-level background slot is full. Make sure that its depth-2 child and depth-3 grandchild make progress. The supervisor must show their ownership tree. Nested calls must wait by default.
+
+Repeat with two parents. Ask one to collect or steer a child owned by the other. The operation must fail. Reduce the maximum depth and ask for the same chain. Deeper delegation must fail clearly. Stop a parent during a nested wait. Its descendants must stop, all waits must settle, and no later attempt must inherit an old cancellation.
+
+Ask a parent to start an explicit background child and finish immediately. Make sure that unfinished children stop with that parent. They must not become independent top-level work. Restore the original capacity settings after this section.
+
+## Saved policy and history
+
+Create `cp1-policy` in a disposable project:
+
+```yaml
+---
+name: cp1-policy
+description: Check saved instructions and permissions.
+display_name: Policy probe
+prompt_mode: append
+tools:
+  - read
+  - grep
+  - find
+  - ls
+---
+Always begin your final answer with SAVED_POLICY_A.
+Read only. Do not change files.
+```
+
+Start it with a short read-only task. After it settles, change its prompt marker to `CURRENT_POLICY_B`. Resume the finished agent with `r`. It must retain `SAVED_POLICY_A` and the original permissions. Use `R` to restart with the current definition. That fresh session must use `CURRENT_POLICY_B`.
+
+Make sure that the stable agent ID stays the same across supported resumes. Attempt IDs must change. Use `[` and `]` in Conversation or Details to read earlier attempts. Their inline cards and conversations must not change to the newest attempt.
+
+Reload Pi, reopen the saved history, and resume again. In a disposable profile, interrupt delivery after the attempt saves its terminal record. Reopen that same main session. Its pending background completion must recover once, without repeating a completion or terminal collection already recorded by Pi. Then disable or remove the type. Resume must fail without substituting general-purpose. Restore the file only if you created it for this script. Do not alter normal user definitions.
+
+Repeat with a preloaded skill and an applicable project instruction file. Edit them after the first attempt settles. Resume must retain the original instruction content. Mutable memory must load its current reference data instead.
+
+Make sure that only v1 records appear in saved history. Earlier experimental files must remain unchanged and must not be loaded or migrated. In a disposable profile, remove a saved SDK session file. Its saved answer must remain visible, but Resume must fail safely. Leave malformed records unchanged.
+
+## Retained configuration and failure paths
+
+All of these cases remain pending until observed in Pi:
+
+- [ ] Load definitions with YAML list fields, including `display_name` and `prompt_mode` aliases, without false warnings for absent optional skill directories.
+- [ ] Try scalar and comma-separated values for each list field. Make sure that the error explains the YAML list format and leaves the file unchanged. Replace them with block or flow lists and reload.
+- [ ] Reject unknown fields (including worktree settings), repeated aliases, and invalid field types. Keep nested delegation off when `allowed_subagents` is absent. Save and reload a definition through the editor without changing its permissions.
+- [ ] Create, edit, disable, enable, and eject definitions. Make sure that package and unrelated files remain unchanged.
+- [ ] Create a definition with the name of an existing one. A confirmation must appear. Cancel it and make sure that the file is unchanged.
+- [ ] Disable a local definition through settings, then edit and save it. The file must not gain `enabled: false`.
+- [ ] Set `enabled: false` in `~/.agents/agents/<name>.md`, then Enable it in a trusted project. The same file must change, and no copy must appear in `.pi/agents`.
+- [ ] Save a definition in a symlinked `~/.agents/agents` folder. The save must succeed. Saving to a symlinked file must fail and leave the link intact.
+- [ ] Exercise trusted project, user, and package precedence. Refuse untrusted project configuration.
+- [ ] Select a registered custom provider and model. Exercise inherited context after branch changes and compaction.
+- [ ] Enforce allowed and denied tools, current model scope, extension isolation, `--no-extensions`, and `--no-mcp`.
+- [ ] Exercise user, project, and local memory. Read-only agents must receive no write/edit permission and no permission to change memory through another tool.
+- [ ] Use `@main`, `@handle`, and type mentions. With `mentionContext` off, a new agent must receive only the typed text. With it on, the agent must also receive the main conversation.
+- [ ] Ask for an unknown agent type, such as `Explorer`. The call must fail and list the available types. No agent must start.
+- [ ] Add a misspelled setting, such as `maxConcurrentForegound`, to `subagents.json`. The catalog must warn about the unknown setting.
+- [ ] Save a definition with a prompt larger than 1 MiB. The save must fail and leave the existing file unchanged.
+- [ ] Finish an agent whose conversation view exceeds 8 MB. Its result must still be saved and readable after reload. Opening the conversation must point to the SDK session file.
+- [ ] In the floating Conversation, click a collapsed notice. That notice, not a nearby row, must toggle. Scroll the mouse wheel over the agent list. The selection must move one agent in the wheel direction.
+- [ ] Start a background agent, send another message, and let the completion arrive. In `/tree`, go back to the message before the completion and choose No summary. The completion must arrive on the new branch. Navigate back to the first branch: no duplicate must arrive. Navigate to before the start request: nothing must arrive.
+- [ ] Give a definition `allowed_subagents: [Explore]` and let its agent start a foreground Explore child. Pi must stay responsive and below normal CPU use while the child runs. The child must appear indented under its parent, and the parent's usage must include the child's.
+- [ ] Subscribe to every `subagents:*` event from a test extension. Make sure that each payload matches the README, including `owner` and `state`.
+- [ ] Force startup failure and a small turn budget. Preserve partial output and show unfinished work rather than claiming task success. With `max_turns: 1` and a task that needs a tool, the result must say that the turn limit was reached.
+- [ ] Request immediate resume while cleanup runs. Refuse it until settlement. Repeat stop without overlapping attempts.
+- [ ] Reload, switch sessions, and shut down during startup, nested waits, and active work. Make sure that no old UI listener or late child survives.
+- [ ] Run an immediate headless task. Background work must settle without terminal-only calls. Save its output and errors.
+- [ ] Inspect idle behavior. There must be no idle polling or per-card timer.
+
+## Review fixes
+
+All of these cases remain pending until observed in Pi:
+
+- [ ] Ask an agent to `cat` a file that contains `printf '\033[2J\033]52;c;aGk=\a'` output. Conversation and Preview must not clear the screen or change the clipboard.
+- [ ] Start two background agents that run `sleep 30`, then `/reload` before they finish. No completion and no new model turn must follow. Repeat with `/new`, then `/resume` the first session. Their cancelled results must stay readable in `/agents`.
+- [ ] Kill Pi while a background agent runs. Reopen the session and use `/tree` to move to a branch that started the agent. No completion must arrive, and the saved record must stay unchanged on disk.
+- [ ] Start two grouped agents, one short and one longer than 30 seconds, and stay idle. The short result must arrive at the 30-second deadline without another prompt.
+- [ ] Start a background child and force auto-compaction to fail. The completion must still arrive.
+- [ ] Start an agent with `isolated: true`, then resume it with `isolated: false`. The resumed attempt must stay isolated.
+- [ ] Start Pi with `-nc` and `-ns`. A new child must load no AGENTS.md files and no skills.
+- [ ] Add one invalid definition file and start several agents. The catalog warning must appear once, not once per agent.
+- [ ] Add an `explore` project definition and finish an `Explore` agent. `r` and `R` must stay available in the supervisor.
+
+## Unsupported features
+
+Workflows, scheduling, RPC, and worktrees are not supported. No tool, menu, or setting must offer them. A `schedule` argument must fail as an unknown field.
+
+Calendar cron and Herdr integration remain out of scope. Children share the checkout. Trusted extensions and shell tools are not an operating-system sandbox.
+
+Record screenshots and failures from the cases above. Static checks do not establish runtime acceptance.

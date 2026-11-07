@@ -1,0 +1,51 @@
+{
+  "name": "@luxass/pi-subagents",
+  "version": "0.0.0",
+  "description": "Run focused child agents with live progress in Pi.",
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "pi-package",
+    "subagents"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxass/agent-extensions",
+    "directory": "packages/pi-subagents"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "catalog:pi",
+    "@earendil-works/pi-coding-agent": "catalog:pi",
+    "@earendil-works/pi-tui": "catalog:pi",
+    "typebox": "catalog:schema"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "image": "https://raw.githubusercontent.com/luxass/agent-extensions/main/packages/pi-subagents/docs/cover.png",
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
