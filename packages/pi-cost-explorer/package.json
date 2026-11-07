@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-cost-explorer",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Explore a Pi session's cost by model, prompt, tool, and request in a tabbed dialog.",
   "keywords": [
     "cost",
