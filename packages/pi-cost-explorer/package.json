@@ -1,0 +1,49 @@
+{
+  "name": "@luxass/pi-cost-explorer",
+  "version": "0.0.0",
+  "description": "Explore a Pi session's cost by model, prompt, tool, and request in a tabbed dialog.",
+  "keywords": [
+    "cost",
+    "pi",
+    "pi-extension",
+    "pi-package",
+    "tokens",
+    "usage"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxass/agent-extensions",
+    "directory": "packages/pi-cost-explorer"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:pi",
+    "@earendil-works/pi-tui": "catalog:pi"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "image": "https://raw.githubusercontent.com/luxass/agent-extensions/main/packages/pi-cost-explorer/docs/cover.png",
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

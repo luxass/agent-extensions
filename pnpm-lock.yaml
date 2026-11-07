@@ -312,6 +312,15 @@ importers:
         specifier: catalog:pi
         version: 1.4.0
 
+  packages/pi-cost-explorer:
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: catalog:pi
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-tui':
+        specifier: catalog:pi
+        version: 1.4.0
+
   packages/pi-personal:
     devDependencies:
       '@earendil-works/pi-ai':

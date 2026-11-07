@@ -5,6 +5,7 @@ import { Resvg } from "@resvg/resvg-js";
 import satori from "satori";
 
 import { BtwCover, metadata as btwMetadata } from "./BtwCover.tsx";
+import { CostExplorerCover, metadata as costExplorerMetadata } from "./CostExplorerCover.tsx";
 import { loadFonts } from "./fonts.ts";
 import { metadata as personalMetadata, PersonalCover } from "./PersonalCover.tsx";
 import { metadata as questionsMetadata, QuestionsCover } from "./QuestionsCover.tsx";
@@ -16,6 +17,7 @@ const fonts = await loadFonts();
 const covers = [
   { metadata: btwMetadata, element: <BtwCover /> },
   { metadata: questionsMetadata, element: <QuestionsCover /> },
+  { metadata: costExplorerMetadata, element: <CostExplorerCover /> },
   { metadata: resourcesMetadata, element: <ResourcesCover /> },
   { metadata: voiceMetadata, element: <VoiceCover /> },
   { metadata: opencodeMetadata, element: <VoiceCover host="opencode" /> },
