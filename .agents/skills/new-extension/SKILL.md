@@ -69,7 +69,8 @@ Inspect the installed Pi documentation and the smallest relevant extension examp
 - Default-export a factory that receives `ExtensionAPI` from `@earendil-works/pi-coding-agent`.
 - Set `pi.extensions` to `["./src/index.ts"]`.
 - Include the keywords `pi`, `pi-extension`, and `pi-package`.
-- Declare imported Pi host packages and `typebox` as `peerDependencies` with `"*"` ranges. Include only the packages actually imported.
+- Declare imported Pi host packages as `peerDependencies` with `"*"` ranges. Include only the packages actually imported.
+- Build schemas with `@earendil-works/pi-schema` (`catalog:pi`), not TypeBox. Pi does not provide it to extensions, so declare it in `dependencies`.
 - Put other runtime dependencies in `dependencies`. Do not bundle Pi host packages.
 - Guard terminal-only behavior with `ctx.mode === "tui"`. Start resources when needed and clean them up on session shutdown.
 

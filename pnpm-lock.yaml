@@ -204,6 +204,9 @@ catalogs:
     '@earendil-works/pi-coding-agent':
       specifier: 1.5.0
       version: 1.5.0
+    '@earendil-works/pi-schema':
+      specifier: 1.5.0
+      version: 1.5.0
     '@earendil-works/pi-tui':
       specifier: 1.5.0
       version: 1.5.0
@@ -267,9 +270,6 @@ importers:
       satori:
         specifier: catalog:covers
         version: 0.62.0
-      typebox:
-        specifier: catalog:schema
-        version: 1.4.2
       typescript:
         specifier: catalog:compiler
         version: 7.0.2
@@ -335,12 +335,12 @@ importers:
 
   packages/pi-questions:
     dependencies:
+      '@earendil-works/pi-schema':
+        specifier: catalog:pi
+        version: 1.5.0
       '@luxass/herdr-agent-shared':
         specifier: workspace:^
         version: link:../herdr-agent-shared
-      typebox:
-        specifier: '*'
-        version: 1.4.2
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: catalog:pi
