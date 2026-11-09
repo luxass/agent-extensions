@@ -12,15 +12,6 @@ overrides:
   semver: 7.8.5
 
 minimumReleaseAgeExclude:
-  # Pi
-  - "@earendil-works/pi-agent-core@1.4.0"
-  - "@earendil-works/pi-ai@1.4.0"
-  - "@earendil-works/pi-codemode@1.4.0"
-  - "@earendil-works/pi-coding-agent@1.4.0"
-  - "@earendil-works/pi-mcp@1.4.0"
-  - "@earendil-works/pi-telemetry@1.4.0"
-  - "@earendil-works/pi-tui@1.4.0"
-
   # OpenCode
   - "@opencode/ai@2.1.1"
   - "@opencode/client@2.1.1"
@@ -38,9 +29,10 @@ catalogs:
     typebox: 1.4.2
 
   pi:
-    "@earendil-works/pi-ai": 1.4.0
-    "@earendil-works/pi-coding-agent": 1.4.0
-    "@earendil-works/pi-tui": 1.4.0
+    "@earendil-works/pi-ai": 1.5.0
+    "@earendil-works/pi-coding-agent": 1.5.0
+    "@earendil-works/pi-schema": 1.5.0
+    "@earendil-works/pi-tui": 1.5.0
 
   opencode:
     "@opencode/plugin": 2.1.1
