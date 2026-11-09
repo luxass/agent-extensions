@@ -37,10 +37,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@earendil-works/pi-schema": "catalog:pi",
     "@luxass/agent-voice": "catalog:voice",
     "@opencode/plugin": "catalog:opencode",
-    "@opentui/solid": "catalog:opencode"
+    "@opentui/solid": "catalog:opencode",
+    "typebox": "catalog:schema"
   },
   "engines": {
     "node": ">=24"
