@@ -20,6 +20,19 @@ const TOOL_NAME = "ask_questions";
 // Only one questionnaire can own Pi's editor slot. Others stack at the bottom as overlays.
 let inlineInUse = false;
 
+/** Headers from tool call arguments, which may still be streaming and incomplete. */
+function questionHeaders(args: unknown): string[] {
+  if (typeof args !== "object" || args === null || !("questions" in args)) return [];
+  if (!Array.isArray(args.questions)) return [];
+  return args.questions
+    .map((question: unknown) =>
+      typeof question === "object" && question !== null && "header" in question
+        ? question.header
+        : undefined,
+    )
+    .filter((header): header is string => typeof header === "string");
+}
+
 async function showQuestions(
   pi: ExtensionAPI,
   blocked: HerdrBlockedReporter,
@@ -110,7 +123,9 @@ export default function askQuestions(pi: ExtensionAPI) {
       idempotentHint: false,
       openWorldHint: false,
     },
-    async execute(_id, params, signal, _update, ctx) {
+    // Pi types tool params with TypeBox's `Static`, which reads pi-schema schemas as `unknown`.
+    // Pi has validated `params` against `QuestionsSchema` before `execute` runs.
+    async execute(_id, params: Questions, signal, _update, ctx) {
       const result = await showQuestions(pi, blocked, params, ctx, signal);
       const prefix =
         result.message ??
@@ -124,11 +139,7 @@ export default function askQuestions(pi: ExtensionAPI) {
       };
     },
     renderCall(args, theme) {
-      const headers = Array.isArray(args.questions)
-        ? args.questions
-            .map((question) => question?.header)
-            .filter((header) => typeof header === "string")
-        : [];
+      const headers = questionHeaders(args);
       return new Text(
         theme.fg("toolTitle", "Ask user") +
           theme.fg("muted", ` · ${stripTerminalSequences(headers.join(" · "))}`),

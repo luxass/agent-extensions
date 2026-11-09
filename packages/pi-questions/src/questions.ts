@@ -1,5 +1,5 @@
+import { arr, bool, obj, opt, type Static, str } from "@earendil-works/pi-schema";
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
-import { Type, type Static } from "typebox";
 
 export const MAX_QUESTIONS = 4;
 export const MIN_OPTIONS = 2;
@@ -11,36 +11,25 @@ export const RESERVED_LABELS_TEXT = "Other, Type something., or Next";
 const RESERVED_LABEL = /^\W*(other|type\W*something|next)\W*$/iu;
 
 // Pi validates arguments against this schema and reports problems to the model.
-// The `\\S` pattern rejects blank text.
-export const QuestionsSchema = Type.Object(
-  {
-    questions: Type.Array(
-      Type.Object(
-        {
-          question: Type.String({ pattern: "\\S" }),
-          header: Type.String({ pattern: "\\S", maxLength: 16 }),
-          options: Type.Array(
-            Type.Object(
-              {
-                label: Type.String({ pattern: "\\S", maxLength: 60 }),
-                description: Type.String({ pattern: "\\S" }),
-                preview: Type.Optional(
-                  Type.String({ description: "Markdown, code, or a mockup for this option." }),
-                ),
-              },
-              { additionalProperties: false },
-            ),
-            { minItems: MIN_OPTIONS, maxItems: MAX_OPTIONS },
-          ),
-          multiSelect: Type.Optional(Type.Boolean()),
-        },
-        { additionalProperties: false },
+// The `\\S` pattern rejects blank text. `obj` builds closed objects, so unknown keys are rejected.
+export const QuestionsSchema = obj({
+  questions: arr(
+    obj({
+      question: str({ pattern: "\\S" }),
+      header: str({ pattern: "\\S", maxLength: 16 }),
+      options: arr(
+        obj({
+          label: str({ pattern: "\\S", maxLength: 60 }),
+          description: str({ pattern: "\\S" }),
+          preview: opt(str({ description: "Markdown, code, or a mockup for this option." })),
+        }),
+        { minItems: MIN_OPTIONS, maxItems: MAX_OPTIONS },
       ),
-      { minItems: 1, maxItems: MAX_QUESTIONS },
-    ),
-  },
-  { additionalProperties: false },
-);
+      multiSelect: opt(bool()),
+    }),
+    { minItems: 1, maxItems: MAX_QUESTIONS },
+  ),
+});
 
 export type Questions = Static<typeof QuestionsSchema>;
 export type Question = Questions["questions"][number];

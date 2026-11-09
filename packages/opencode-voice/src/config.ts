@@ -1,14 +1,18 @@
-import { Type } from "typebox";
-import * as Value from "typebox/value";
+import { compile, lit, obj, opt, type Static, str, union } from "@earendil-works/pi-schema";
 
 export const DEFAULT_KEYBIND = "ctrl+shift+v";
 
-export const voiceOptionsSchema = Type.Object({
-  settingsPath: Type.Optional(Type.String()),
-  keybind: Type.Optional(Type.Union([Type.Literal(false), Type.String({ minLength: 1 })])),
-});
+export const voiceOptionsSchema = obj(
+  {
+    settingsPath: opt(str()),
+    keybind: opt(union([lit(false), str({ minLength: 1 })])),
+  },
+  { open: true },
+);
 
-export type VoiceOptions = Type.Static<typeof voiceOptionsSchema>;
+export type VoiceOptions = Static<typeof voiceOptionsSchema>;
+
+const voiceOptionsValidator = compile(voiceOptionsSchema);
 
 /**
  * Validate plugin options while preserving extra keys.
@@ -18,9 +22,10 @@ export type VoiceOptions = Type.Static<typeof voiceOptionsSchema>;
  * @throws If a known option has an invalid value.
  */
 export function resolveOptions(options: unknown): VoiceOptions {
-  if (!Value.Check(voiceOptionsSchema, options)) {
-    const errors = Value.Errors(voiceOptionsSchema, options)
-      .map(({ instancePath, message }) => `${instancePath}: ${message}`)
+  if (!voiceOptionsValidator.check(options)) {
+    const errors = voiceOptionsValidator
+      .errors(options)
+      .map(({ path, message }) => `${path}: ${message}`)
       .join("\n");
     throw new Error(`Invalid voice options:\n${errors}`);
   }
