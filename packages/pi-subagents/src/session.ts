@@ -3,7 +3,9 @@ import { access } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { Message } from "@earendil-works/pi-ai";
 import {
+  convertToLlm,
   createAgentSession,
   createCodemodeExtension,
   createMcpExtension,
@@ -27,7 +29,6 @@ import {
 import type { SubagentThinking } from "./api.ts";
 import type { SubagentSettings } from "./settings.ts";
 
-type SessionMessage = AgentSession["messages"][number];
 type SubagentModel = NonNullable<ExtensionContext["model"]>;
 
 const BUILTIN_TOOLS = new Set([
@@ -62,7 +63,7 @@ export interface SubagentPolicy {
   extensionPaths: string[];
   codemode: boolean;
   mcp: boolean;
-  inherited: SessionMessage[];
+  inherited: Message[];
 }
 
 /** Builds the model runtime shared by all agents of one main session, copying its providers. */
@@ -78,17 +79,19 @@ export async function createSubagentRuntime(ctx: ExtensionContext): Promise<Mode
 }
 
 /** Copies the conversation the main model currently sees, for `inherit_context` (S7). */
-export function inheritedSubagentContext(ctx: ExtensionContext): SessionMessage[] {
-  const messages = structuredClone(ctx.sessionManager.buildSessionProjection().messages);
+export function inheritedSubagentContext(ctx: ExtensionContext): Message[] {
+  // Pi's own conversion before a model request. Summaries, extension messages such as earlier agent
+  // results, and `!` command output become user messages, exactly as the main model sees them.
+  const messages = convertToLlm(
+    structuredClone(ctx.sessionManager.buildSessionProjection().messages),
+  );
   const answeredCalls = new Set(
     messages.flatMap((message) => (message.role === "toolResult" ? [message.toolCallId] : [])),
   );
   const keptCalls = new Set<string>();
-  const inherited: SessionMessage[] = [];
+  const inherited: Message[] = [];
   for (const message of messages) {
-    if (message.role === "compactionSummary" || message.role === "branchSummary") {
-      inherited.push({ role: "user", content: message.summary, timestamp: message.timestamp });
-    } else if (message.role === "assistant") {
+    if (message.role === "assistant") {
       // A tool call without a result would leave the transcript invalid for the provider.
       const content = message.content.filter((part) => {
         if (part.type !== "toolCall") return true;
@@ -247,15 +250,7 @@ export async function createSubagentSession(options: {
       id: options.sessionId,
       parentSession: ctx.sessionManager.getSessionFile(),
     });
-    for (const message of policy.inherited) {
-      if (
-        message.role === "user" ||
-        message.role === "assistant" ||
-        message.role === "toolResult"
-      ) {
-        sessionManager.appendMessage(message);
-      }
-    }
+    for (const message of policy.inherited) sessionManager.appendMessage(message);
   }
 
   const { session } = await createAgentSession({
