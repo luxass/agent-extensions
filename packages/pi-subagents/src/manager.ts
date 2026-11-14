@@ -137,6 +137,8 @@ export class SubagentManager {
   private readonly listeners = new Set<() => void>();
   /** Last `subagents:activity` payload sent per agent, so unchanged updates are not repeated. */
   private readonly lastActivity = new Map<string, string>();
+  /** The last saved conversation read for `/agents`, so drawing it does not read the file again. */
+  private savedTranscript: { key: string; messages: readonly AgentMessage[] } | undefined;
   private runtime: Promise<ModelRuntime> | undefined;
   private closed = false;
   /** Main-session request counter, advanced on `agent_start` (S5). */
@@ -583,11 +585,19 @@ export class SubagentManager {
     const child = this.live.get(record.id)?.child;
     if (child) return child.session.messages;
     if (!record.sessionFile) return [];
-    try {
-      return SessionManager.open(record.sessionFile).buildSessionContext().messages;
-    } catch {
-      return [];
+    // A saved conversation changes only with a new run or status, so one read per state is enough.
+    // The viewer asks on every render, many times a second while any agent runs.
+    const key = `${record.id}:${record.run}:${record.status}`;
+    if (this.savedTranscript?.key !== key) {
+      let messages: readonly AgentMessage[];
+      try {
+        messages = SessionManager.open(record.sessionFile).buildSessionContext().messages;
+      } catch {
+        messages = [];
+      }
+      this.savedTranscript = { key, messages };
     }
+    return this.savedTranscript.messages;
   }
 
   /** Tool definitions of a live agent, so `/agents` draws its calls the way Pi does. */
