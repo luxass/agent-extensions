@@ -105,6 +105,7 @@ export class SubagentDelivery {
 
   private flushIdle(): void {
     if (this.disposed) return;
+    this.forgetDelivered();
     if (this.manager.settings.delivery.mode === "immediate") {
       this.send(this.take(this.ready));
       return;
@@ -122,7 +123,7 @@ export class SubagentDelivery {
             !isSubagentFinished(record.status),
         );
       if (!outstanding) {
-        this.sendGroup(requestId, group);
+        this.sendGroup(group);
         continue;
       }
       if (this.timers.has(requestId)) continue;
@@ -132,10 +133,7 @@ export class SubagentDelivery {
           this.timers.delete(requestId);
           if (this.busy || this.disposed) return;
           // Report what finished. Stragglers form the next batch.
-          this.sendGroup(
-            requestId,
-            this.ready.filter((record) => record.requestId === requestId),
-          );
+          this.sendGroup(this.ready.filter((record) => record.requestId === requestId));
         },
         Math.max(0, deadline - Date.now()),
       );
@@ -143,8 +141,7 @@ export class SubagentDelivery {
     }
   }
 
-  private sendGroup(requestId: number, group: SubagentRecord[]): void {
-    this.readyAt.delete(requestId);
+  private sendGroup(group: SubagentRecord[]): void {
     this.send(this.take(group));
   }
 
@@ -152,7 +149,21 @@ export class SubagentDelivery {
   private take(records: SubagentRecord[]): SubagentRecord[] {
     const taken = new Set(records);
     this.ready = this.ready.filter((record) => !taken.has(record));
+    this.forgetDelivered();
     return records.filter((record) => record.receipt === "unread");
+  }
+
+  /**
+   * Drops results that no longer wait, such as one the model read with get_subagent_result. A
+   * request with no waiting result loses its 60-second clock, so its next result starts a new wait.
+   */
+  private forgetDelivered(): void {
+    this.ready = this.ready.filter((record) => record.receipt === "unread");
+    for (const requestId of this.readyAt.keys()) {
+      if (!this.ready.some((record) => record.requestId === requestId)) {
+        this.readyAt.delete(requestId);
+      }
+    }
   }
 
   private send(batch: SubagentRecord[]): void {
