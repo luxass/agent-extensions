@@ -22,7 +22,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 import type { SubagentManager, SubagentRecord } from "../manager.ts";
-import { cleanSubagentText } from "./agent-status.ts";
+import { cleanSubagentText, cleanSubagentValue } from "./agent-status.ts";
 
 type TranscriptMessage = AgentSession["messages"][number];
 /** Whatever ToolExecutionComponent accepts to draw a call: a tool definition or its renderers. */
@@ -147,10 +147,11 @@ export class SubagentConversation {
           if (part.type !== "toolCall") continue;
           const definition =
             this.manager.toolDefinition(record, part.name) ?? this.builtinTools[part.name];
+          // Arguments come from the agent's model, and renderers print them as they are (S8).
           const tool = new ToolExecutionComponent(
-            part.name,
+            cleanSubagentText(part.name),
             part.id,
-            part.arguments,
+            cleanSubagentValue(part.arguments),
             {},
             definition,
             this.tui,
@@ -168,7 +169,7 @@ export class SubagentConversation {
             content: message.content.map((part) =>
               part.type === "text" ? { ...part, text: cleanSubagentText(part.text) } : part,
             ),
-            details: message.details,
+            details: cleanSubagentValue(message.details),
             isError: message.isError,
             durationMs: message.durationMs,
           },

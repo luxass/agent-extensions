@@ -17,6 +17,29 @@ export function cleanSubagentText(text: string): string {
   return text.replace(CONTROL_SEQUENCES, "");
 }
 
+/**
+ * Cleans every string inside a value from an agent, such as tool-call arguments or result details.
+ * Pi's tool renderers print these as they are, so they are cleaned before a renderer sees them (S8).
+ */
+export function cleanSubagentValue<Value>(value: Value): Value {
+  // The shape stays the same. Only the strings inside it change.
+  return cleanStrings(value) as Value;
+}
+
+function cleanStrings(value: unknown): unknown {
+  if (typeof value === "string") return cleanSubagentText(value);
+  if (Array.isArray(value)) return value.map((item: unknown) => cleanStrings(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]: [string, unknown]) => [
+        cleanSubagentText(key),
+        cleanStrings(item),
+      ]),
+    );
+  }
+  return value;
+}
+
 /** First line of agent text with words in it, cleaned for one-line display. Code fences are skipped. */
 export function firstSubagentLine(text: string): string {
   const lines = cleanSubagentText(text).split("\n");
