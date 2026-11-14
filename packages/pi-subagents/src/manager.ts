@@ -41,6 +41,7 @@ export interface SubagentRecord {
   /** First line of the latest prompt, shown in the UI. */
   task: string;
   status: SubagentStatus;
+  /** Counts starts and continuations, from 1. It rises when a run is scheduled. */
   run: number;
   requestId: number;
   background: boolean;
@@ -137,6 +138,8 @@ export class SubagentManager {
   private readonly listeners = new Set<() => void>();
   /** Last `subagents:activity` payload sent per agent, so unchanged updates are not repeated. */
   private readonly lastActivity = new Map<string, string>();
+  /** How each earlier run of a continued agent ended, by `<id>:<run>`, for its `Agent` card (S8). */
+  private readonly earlierRuns = new Map<string, SubagentRecord>();
   /** The last saved conversation read for `/agents`, so drawing it does not read the file again. */
   private savedTranscript: { key: string; messages: readonly AgentMessage[] } | undefined;
   private runtime: Promise<ModelRuntime> | undefined;
@@ -171,6 +174,16 @@ export class SubagentManager {
     return this.list().find((record) => record.name === name);
   }
 
+  /**
+   * The agent as one of its runs left it: the live record for its current run, or the saved
+   * outcome of an earlier run. Without a run number it is the live record.
+   */
+  runOutcome(id: string, run: number | undefined): SubagentRecord | undefined {
+    const record = this.records.get(id);
+    if (run === undefined || record?.run === run) return record;
+    return this.earlierRuns.get(`${id}:${run}`) ?? record;
+  }
+
   /** Subscribes UI to record changes. Returns the unsubscribe function. */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -184,6 +197,10 @@ export class SubagentManager {
       const record = entry.data as SubagentRecord | undefined;
       if (record?.sessionId !== this.sessionId) continue;
       this.records.set(record.id, { ...record });
+      // Entries are in time order, so the last finished entry of a run is how that run ended.
+      if (isSubagentFinished(record.status)) {
+        this.earlierRuns.set(`${record.id}:${record.run}`, { ...record });
+      }
     }
     for (const record of this.records.values()) {
       if (!isSubagentFinished(record.status)) {
@@ -290,6 +307,8 @@ export class SubagentManager {
       pi: this.pi,
       settings: this.settings,
     });
+    // The card of the run that just ended keeps showing that run, not the new one.
+    this.earlierRuns.set(`${record.id}:${record.run}`, { ...record });
     Object.assign(record, {
       status: "queued",
       requestId: this.requestId,
@@ -338,6 +357,7 @@ export class SubagentManager {
 
   private schedule(record: SubagentRecord, policy: SubagentPolicy, prompt: string): void {
     this.live.set(record.id, { policy, prompt, pendingSteers: [] });
+    record.run++;
     record.task = prompt.split("\n")[0] ?? "";
     this.persist(record);
     // Foreground calls bypass the background cap (S9).
@@ -373,7 +393,6 @@ export class SubagentManager {
     if (!live) return;
     Object.assign(record, {
       status: "running",
-      run: record.run + 1,
       model: `${live.policy.model.provider}/${live.policy.model.id}`,
       startedAt: Date.now(),
       activity: "starting",

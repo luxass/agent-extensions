@@ -68,10 +68,10 @@ export function registerSubagentTools(pi: ExtensionAPI, manager: SubagentManager
       return new Text(title, 0, 0);
     },
     renderResult(result, options, theme, context) {
-      const id = (result.details as AgentToolDetails | undefined)?.id;
+      const { id, run } = (result.details as AgentToolDetails | undefined) ?? {};
       if (!context.isError && id && manager.records.has(id)) {
         const hint = context.keyHint("app.tools.expand", "to expand");
-        return new AgentCardBody(() => manager.records.get(id), theme, options.expanded, hint);
+        return new AgentCardBody(() => manager.runOutcome(id, run), theme, options.expanded, hint);
       }
       const text = result.content
         .flatMap((part) => (part.type === "text" ? [part.text] : []))
@@ -90,7 +90,7 @@ export function registerSubagentTools(pi: ExtensionAPI, manager: SubagentManager
         ...params,
         thinking: params.thinking as SubagentThinking | undefined,
       });
-      const details = { id: record.id };
+      const details = { id: record.id, run: record.run };
       if (record.background) {
         const where =
           record.status === "queued" ? "queued for the background" : "running in the background";

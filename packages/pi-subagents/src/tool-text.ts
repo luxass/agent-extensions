@@ -5,6 +5,8 @@ import type { SubagentManager, SubagentRecord } from "./manager.ts";
 /** What the `Agent` tool's result and progress carry, so the card can find its agent. */
 export interface AgentToolDetails {
   id?: string;
+  /** The run this call started, so its card keeps that run's outcome after a later resume. */
+  run?: number;
 }
 
 /** A plain text tool result that points the card at its agent. */
