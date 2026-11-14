@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 
-import type { SubagentManager, SubagentRecord } from "./manager.ts";
+import type { SubagentDefinition } from "./agents.ts";
+import type { SubagentRecord } from "./manager.ts";
 
 /** What the `Agent` tool's result and progress carry, so the card can find its agent. */
 export interface AgentToolDetails {
@@ -31,9 +32,8 @@ export function subagentFinishedText(record: SubagentRecord): string {
 }
 
 /** Describes the available types and their tools, so the model can choose (S1). */
-export function agentToolDescription(manager: SubagentManager): string {
-  const types = manager
-    .availableTypes()
+export function agentToolDescription(available: readonly SubagentDefinition[] | undefined): string {
+  const types = (available ?? [])
     .map((definition) => {
       const tools = (definition.tools ?? ["read", "bash", "edit", "write"]).join(", ");
       return `- ${definition.name}: ${definition.description} Tools: ${tools}.`;
@@ -60,6 +60,7 @@ export function agentToolDescription(manager: SubagentManager): string {
     "- The user sees only a short preview of each result. Tell them what matters.",
     "",
     "Available agent types:",
-    types || "- none",
+    // Without a list, the session has not started and no request can reach the model yet.
+    available ? types || "- none" : "- listed when the session has started",
   ].join("\n");
 }

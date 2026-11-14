@@ -9,7 +9,7 @@ import {
 } from "./mentions.ts";
 import { SUBAGENT_RESULT_MESSAGE, SubagentDelivery } from "./results.ts";
 import { readSubagentSettings } from "./settings.ts";
-import { registerSubagentTools } from "./tools.ts";
+import { registerAgentTool, registerSubagentTools } from "./tools.ts";
 import { renderSubagentResultMessage } from "./ui/agent-card.ts";
 import { installBackgroundShortcut } from "./ui/background-shortcut.ts";
 import { openSubagentViewer } from "./ui/viewer.ts";
@@ -23,6 +23,10 @@ export default function piSubagents(pi: ExtensionAPI): void {
 
   pi.registerMessageRenderer(SUBAGENT_RESULT_MESSAGE, renderSubagentResultMessage);
 
+  // Registered here, not in session_start: on /reload Pi redraws the chat before session_start,
+  // and it can only draw the calls of tools it already knows.
+  registerSubagentTools(pi, () => manager);
+
   pi.registerCommand("agents", {
     description: "Show agents and their conversations",
     handler: async (_args, ctx) => {
@@ -35,7 +39,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
     },
   });
 
-  // Setup waits for session_start because the factory has no ExtensionContext: no working
+  // The manager waits for session_start because the factory has no ExtensionContext: no working
   // directory, no session id, and no trust decision yet. Pi runs this factory before it asks about
   // project trust, so project agents and settings could not be filtered there. Pi also runs
   // factories in invocations that never start a session. /new, /resume, /fork, and /reload load a
@@ -54,7 +58,8 @@ export default function piSubagents(pi: ExtensionAPI): void {
     manager = new SubagentManager(pi, ctx, sessionId, definitions, settings);
     manager.restore();
     delivery = new SubagentDelivery(pi, ctx, manager);
-    registerSubagentTools(pi, manager);
+    // Again, now that the agent types are known, so the description can list them (S1).
+    registerAgentTool(pi, () => manager, manager.availableTypes());
     if (ctx.mode === "tui") {
       const current = manager;
       ctx.ui.addAutocompleteProvider(subagentMentionAutocomplete(() => current.availableTypes()));

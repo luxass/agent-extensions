@@ -46,11 +46,16 @@ export class AgentCardBody implements Component {
     private readonly theme: Theme,
     private readonly expanded: boolean,
     private readonly expandHint: string,
+    /** Shown while the agent is unknown, for example before a reloaded session restores it. */
+    private readonly fallbackText = "",
   ) {}
 
   render(width: number): string[] {
     const record = this.record();
-    if (!record) return [];
+    if (!record) {
+      if (!this.fallbackText) return [];
+      return new Text(this.theme.fg("text", this.fallbackText), 0, 0).render(width);
+    }
     const { theme } = this;
     const fit = (line: string) => truncateToWidth(line, width, "…");
     const mark = subagentStatusMark(record, theme);
