@@ -61,6 +61,8 @@ export class SubagentConversation {
   private toolRows: ToolRow[] = [];
   private expanded = new Set<string>();
   private allExpanded = false;
+  /** The tool call the keyboard cursor is on (S8: every mouse action also has a key). */
+  private selectedToolId: string | undefined;
   private recordId: string | undefined;
   private version = "";
   private messageCount = 0;
@@ -106,6 +108,7 @@ export class SubagentConversation {
       this.scrollTop = 0;
       this.expanded.clear();
       this.allExpanded = false;
+      this.selectedToolId = undefined;
     }
     if (!record) {
       this.blocks = [];
@@ -194,16 +197,47 @@ export class SubagentConversation {
   toggleToolAtLine(viewportLine: number): boolean {
     const line = this.scrollTop + viewportLine;
     const row = this.toolRows.find((candidate) => line >= candidate.start && line < candidate.end);
-    const tool = row && this.tools.get(row.toolCallId);
-    if (!row || !tool) return false;
-    const open = this.allExpanded || this.expanded.has(row.toolCallId);
+    return row ? this.toggleTool(row.toolCallId) : false;
+  }
+
+  /** Moves the tool cursor to the next (1) or previous (-1) tool call and scrolls it into view (S8). */
+  selectTool(delta: 1 | -1): void {
+    const ids = [...this.tools.keys()];
+    const current = this.selectedToolId ? ids.indexOf(this.selectedToolId) : -1;
+    let next = Math.max(0, Math.min(ids.length - 1, current + delta));
+    if (current < 0) {
+      // The cursor starts on the first tool call in view, where the reader is looking.
+      const inView = this.toolRows.find(
+        (row) => row.end > this.scrollTop && row.start < this.scrollTop + this.page,
+      );
+      next = inView ? ids.indexOf(inView.toolCallId) : delta > 0 ? 0 : ids.length - 1;
+    }
+    this.selectedToolId = ids[next];
+    const row = this.toolRows.find((candidate) => candidate.toolCallId === this.selectedToolId);
+    // The cursor mark is on the line above the call.
+    const hidden = row && (row.start - 1 < this.scrollTop || row.end > this.scrollTop + this.page);
+    if (row && hidden) this.scrollTo(row.start - 1);
+  }
+
+  /** Expands or collapses the tool call under the cursor, the key for a mouse click (S8). */
+  toggleSelectedTool(): boolean {
+    if (!this.selectedToolId) return false;
+    // Stop following, so the call stays in view while its height changes.
+    this.following = false;
+    return this.toggleTool(this.selectedToolId);
+  }
+
+  private toggleTool(toolCallId: string): boolean {
+    const tool = this.tools.get(toolCallId);
+    if (!tool) return false;
+    const open = this.allExpanded || this.expanded.has(toolCallId);
     if (this.allExpanded) {
       // Collapsing one call after expanding all keeps the others open.
       this.allExpanded = false;
       for (const id of this.tools.keys()) this.expanded.add(id);
     }
-    if (open) this.expanded.delete(row.toolCallId);
-    else this.expanded.add(row.toolCallId);
+    if (open) this.expanded.delete(toolCallId);
+    else this.expanded.add(toolCallId);
     tool.setExpanded(!open);
     return true;
   }
@@ -238,7 +272,11 @@ export class SubagentConversation {
     const lines: string[] = [];
     this.toolRows = [];
     for (const block of this.blocks) {
-      if (lines.length) lines.push("");
+      // The line above a block separates it from the block before. On the selected tool call it
+      // holds the cursor mark.
+      const selected = block.toolCallId !== undefined && block.toolCallId === this.selectedToolId;
+      if (selected) lines.push(this.theme.fg("accent", "› selected tool call"));
+      else if (lines.length) lines.push("");
       const start = lines.length;
       lines.push(
         ...block.component.render(contentWidth).map((line) => line.replace(OSC_SEQUENCES, "")),

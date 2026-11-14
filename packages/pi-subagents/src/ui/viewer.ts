@@ -66,12 +66,13 @@ export async function openSubagentViewer(
           );
         }
         const expand = keybindings.getKeys("app.tools.expand")[0] ?? "ctrl+o";
-        const scroll = "↑↓ pgup pgdn home end scroll";
         const parts =
           reading || focus === "conversation"
             ? [
-                scroll,
-                `${expand} tools`,
+                "↑↓ scroll",
+                "t/T tool",
+                "enter expand",
+                `${expand} all tools`,
                 ...(reading ? [] : ["tab list"]),
                 fullscreen ? "f floating" : "f fullscreen",
                 reading ? "esc back" : "esc close",
@@ -172,7 +173,11 @@ export async function openSubagentViewer(
             else if (keybindings.matches(data, "tui.select.confirm") && list.selected())
               reading = true;
             else if (data === "x") void list.pressStop().then(() => tui.requestRender());
-          } else if (keybindings.matches(data, "tui.select.up")) conversation.scrollBy(-1);
+          } else if (data === "t") conversation.selectTool(1);
+          else if (data === "T" || matchesKey(data, "shift+t")) conversation.selectTool(-1);
+          else if (keybindings.matches(data, "tui.select.confirm"))
+            conversation.toggleSelectedTool();
+          else if (keybindings.matches(data, "tui.select.up")) conversation.scrollBy(-1);
           else if (keybindings.matches(data, "tui.select.down")) conversation.scrollBy(1);
           else if (keybindings.matches(data, "tui.select.pageUp"))
             conversation.scrollBy(-conversation.page);
