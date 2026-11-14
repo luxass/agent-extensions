@@ -271,6 +271,11 @@ export class SubagentManager {
         `Agent "${name}" is ${record.status}. Wait for it to finish, or use steer_subagent.`,
       );
     }
+    // A run that just ended is still closing its session. A new run started now would be finished
+    // by the old one: wrong status, no steering, and its result reported before it exists.
+    if (this.live.has(record.id)) {
+      throw new Error(`Agent "${name}" is still finishing its last run. Try again in a moment.`);
+    }
     if (!record.sessionFile || !existsSync(record.sessionFile)) {
       throw new Error(`Agent "${name}" has no saved conversation to continue.`);
     }
