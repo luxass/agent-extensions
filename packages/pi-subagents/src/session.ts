@@ -212,13 +212,17 @@ export async function createSubagentSession(options: {
   onEvent: (event: AgentSessionEvent) => void;
 }): Promise<SubagentSession> {
   const { ctx, pi, runtime, policy } = options;
-  const settingsManager = SettingsManager.inMemory(pi.getSettings(), {
-    projectTrusted: ctx.isProjectTrusted(),
-  });
+  const projectTrusted = ctx.isProjectTrusted();
+  // The session's settings stay in memory. A session saves its model and thinking level to its
+  // settings, and an agent must never change the user's settings files.
+  const settingsManager = SettingsManager.inMemory(pi.getSettings(), { projectTrusted });
+  // The loader reads the settings files, so it knows which paths are global and which belong to
+  // the project. It resolves each from its own folder, and it only reads while loading.
+  const resourceSettings = SettingsManager.create(ctx.cwd, getAgentDir(), { projectTrusted });
   const resourceLoader: DefaultResourceLoader = new DefaultResourceLoader({
     cwd: ctx.cwd,
     agentDir: getAgentDir(),
-    settingsManager,
+    settingsManager: resourceSettings,
     noExtensions: true,
     additionalExtensionPaths: policy.extensionPaths,
     extensionFactories: [
