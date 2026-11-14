@@ -202,8 +202,11 @@ export async function openSubagentViewer(
               return { handled: true, render: false };
             }
           }
-          if (event.type === "wheel" && inBody && inConversation) {
-            conversation.scrollBy(event.wheelDelta ?? 0);
+          if (event.type === "wheel") {
+            // The viewer takes every wheel event over it. An unhandled one scrolls the chat behind.
+            const overList = !reading && inBody && event.x >= 1 && event.x <= layout.listWidth;
+            if (overList) list.move(Math.sign(event.wheelDelta ?? 0));
+            else if (inBody && inConversation) conversation.scrollBy(event.wheelDelta ?? 0);
             return { handled: true };
           }
           if (event.type !== "press" || event.button !== "left" || !inBody) return undefined;
