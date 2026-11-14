@@ -62,6 +62,8 @@ export default function piSubagents(pi: ExtensionAPI): void {
       removeShortcut = installBackgroundShortcut(pi, ctx, current);
     }
     pi.events.emit("subagents:ready", { sessionId });
+    // Last, so the tools exist when a restored result starts a main-model turn.
+    delivery.deliverRestored();
   });
 
   // A leading type mention asks the main model to start that type. The instruction stays hidden (S2).

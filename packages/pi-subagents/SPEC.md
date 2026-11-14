@@ -26,7 +26,7 @@ I ask the main model to send corrections to running agents. I can stop running o
 
 ## S7. Include context and reload
 
-When the model sets `inherit_context`, the new agent receives the conversation the main model currently sees. This includes compaction summaries as user messages, but excludes tool calls without results. Agent conversations are saved under `~/.pi/agent/subagents/<main session id>/`. After `/reload`, or after I quit Pi and resume the session, finished agents remain listed, readable, and continuable. Agents that were running or queued show as interrupted and can be continued. An agent interrupted before it started has no earlier conversation, so continuing it starts one with the new prompt. Their interrupted runs never deliver a late result. A forked or cloned session starts without agents.
+When the model sets `inherit_context`, the new agent receives the conversation the main model currently sees. This includes compaction summaries as user messages, but excludes tool calls without results. Agent conversations are saved under `~/.pi/agent/subagents/<main session id>/`. After `/reload`, or after I quit Pi and resume the session, finished agents remain listed, readable, and continuable. Agents that were running or queued show as interrupted and can be continued. An agent interrupted before it started has no earlier conversation, so continuing it starts one with the new prompt. Their interrupted runs never deliver a late result. A result that had finished but was still waiting to be delivered is delivered after the reload or resume. A forked or cloned session starts without agents.
 
 ## S8. Watch and open agents
 

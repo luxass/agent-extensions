@@ -190,7 +190,10 @@ export class SubagentManager {
     return () => this.listeners.delete(listener);
   }
 
-  /** Restores this session's saved agents. Unfinished runs become interrupted and never deliver (S7). */
+  /**
+   * Restores this session's saved agents. Unfinished runs become interrupted and never deliver.
+   * A finished result that was still waiting stays unread, so it is delivered now (S5, S7).
+   */
   restore(): void {
     for (const entry of this.ctx.sessionManager.getEntries()) {
       if (entry.type !== "custom" || entry.customType !== SUBAGENT_RECORD_ENTRY) continue;
@@ -207,10 +210,11 @@ export class SubagentManager {
         record.status = "interrupted";
         record.activity = "interrupted";
         record.endedAt ??= Date.now();
-      }
-      // Nothing arrives late after a reload or resume.
-      if (record.receipt === "pending" || record.receipt === "unread")
+        // An interrupted run has no result to send, now or later.
         record.receipt = "suppressed";
+      }
+      // New requests must not share a number with earlier ones, or grouping would mix them.
+      this.requestId = Math.max(this.requestId, record.requestId + 1);
     }
   }
 

@@ -74,6 +74,19 @@ export class SubagentDelivery {
     if (!this.busy && this.ctx.isIdle()) this.flushIdle();
   }
 
+  /**
+   * After a reload or a resumed session: delivers results that had finished before it but were
+   * still waiting, for example for a sibling in grouped mode (S5).
+   */
+  deliverRestored(): void {
+    for (const record of this.manager.list()) {
+      if (record.receipt !== "unread") continue;
+      this.ready.push(record);
+      if (!this.readyAt.has(record.requestId)) this.readyAt.set(record.requestId, Date.now());
+    }
+    if (!this.busy && this.ctx.isIdle()) this.flushIdle();
+  }
+
   /** The main session started a run, so ready results wait for a boundary instead. */
   agentStarted(): void {
     this.busy = true;
