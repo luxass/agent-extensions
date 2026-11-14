@@ -240,6 +240,12 @@ export async function createSubagentSession(options: {
     },
   });
   await resourceLoader.reload();
+  // reload() collects load errors and does not throw. Without its extension the agent would run
+  // without a tool it was given, and still report success (S4).
+  const [loadError] = resourceLoader.getExtensions().errors;
+  if (loadError) {
+    throw new Error(`Extension ${loadError.path} failed to load for the agent: ${loadError.error}`);
+  }
 
   let sessionManager: SessionManager;
   if (options.sessionFile) {
