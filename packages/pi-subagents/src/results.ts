@@ -22,19 +22,25 @@ export interface SubagentResultDetails {
   records: SubagentRecord[];
 }
 
+/** Cuts automatically delivered text at the limit and points to the full result (S5). */
+function cutSubagentResult(text: string, name: string): string {
+  if (text.length <= SUBAGENT_RESULT_LIMIT) return text;
+  return (
+    text.slice(0, SUBAGENT_RESULT_LIMIT) +
+    `\n\n[Result cut at ${SUBAGENT_RESULT_LIMIT} characters. Call get_subagent_result with name "${name}" for the full text.]`
+  );
+}
+
 function resultText(record: SubagentRecord): string {
   const partial = record.partial ? " (partial: turn limit reached)" : "";
   const header = `Agent ${record.name} (${record.agentType}) ${record.status}${partial}.`;
-  if (record.stoppedBy === "user")
-    return `${header} The user stopped it.${record.result ? `\n\n${record.result}` : ""}`;
+  if (record.stoppedBy === "user") {
+    const result = cutSubagentResult(record.result, record.name);
+    return `${header} The user stopped it.${result ? `\n\n${result}` : ""}`;
+  }
   let body = record.result || record.error || "(no answer)";
   if (record.error && record.result) body += `\nError: ${record.error}`;
-  if (body.length > SUBAGENT_RESULT_LIMIT) {
-    body =
-      body.slice(0, SUBAGENT_RESULT_LIMIT) +
-      `\n\n[Result cut at ${SUBAGENT_RESULT_LIMIT} characters. Call get_subagent_result with name "${record.name}" for the full text.]`;
-  }
-  return `${header}\n\n${body}`;
+  return `${header}\n\n${cutSubagentResult(body, record.name)}`;
 }
 
 /** Decides when and how finished background results reach the main model (S5). */
