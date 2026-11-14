@@ -178,6 +178,15 @@ export function resolveSubagentPolicy(options: {
     }
   }
   if (codemode && !tools.includes("codemode")) tools.push("codemode");
+  // Checked here so a missing skill rejects the call before its task name is used (S1). Pi lists
+  // each of the main session's skills as the command `skill:<name>`.
+  const mainSkills = new Set(
+    pi.getCommands().flatMap((command) => (command.source === "skill" ? [command.name] : [])),
+  );
+  const missingSkill = (definition.skills ?? []).find((name) => !mainSkills.has(`skill:${name}`));
+  if (missingSkill) {
+    throw new Error(`Skill ${missingSkill} listed by agent type ${definition.name} was not found.`);
+  }
   return {
     definition,
     model: resolveSubagentModel(ctx, definition.model ?? overrides.model),
