@@ -58,6 +58,9 @@ export class SubagentDelivery {
   private settled(record: SubagentRecord): void {
     if (this.disposed) return;
     if (record.receipt === "unread") {
+      // A continued agent can still wait here with its earlier result. Its newest result replaces
+      // that one, so the agent is reported once.
+      this.ready = this.ready.filter((waiting) => waiting !== record);
       this.ready.push(record);
       if (!this.readyAt.has(record.requestId)) this.readyAt.set(record.requestId, Date.now());
     }
