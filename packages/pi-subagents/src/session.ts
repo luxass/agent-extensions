@@ -301,7 +301,10 @@ export async function createSubagentSession(options: {
     }
     if (event.type === "turn_end") {
       turns++;
-      if (policy.maxTurns > 1 && turns === policy.maxTurns - 1) {
+      // A turn without tool calls is the agent's final answer. A wrap-up message there would force
+      // one more turn, and that reply would replace the answer (S6: stop only if work remains).
+      const workRemains = event.toolResults.length > 0;
+      if (policy.maxTurns > 1 && turns === policy.maxTurns - 1 && workRemains) {
         session.agent.steer({ role: "user", content: WRAP_UP_INSTRUCTION, timestamp: Date.now() });
       }
     }
