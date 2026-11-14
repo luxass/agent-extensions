@@ -372,6 +372,9 @@ export class SubagentManager {
         onEvent: (event) => this.track(record, live, event),
       });
       live.child = child;
+      // A reload, /new, or quit can arrive while the session is being created. shutdown() could not
+      // dispose a session that did not exist yet, so the run ends here and `finally` disposes it (S7).
+      if (this.closed) return;
       record.sessionFile = child.session.sessionManager.getSessionFile();
       if (record.status === "stopping") throw new Error("stopped");
       const steers = live.pendingSteers.splice(0);
@@ -385,6 +388,8 @@ export class SubagentManager {
         Object.assign(record, { status: "failed", error } satisfies Partial<SubagentRecord>);
       else record.status = "completed";
     } catch (error) {
+      // After shutdown the record is already saved as interrupted, and stays that way.
+      if (this.closed) return;
       if (record.stoppedBy) record.status = "stopped";
       else
         Object.assign(record, {
