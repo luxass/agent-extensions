@@ -23,7 +23,7 @@ To give an agent a correction, or to continue a finished agent, ask the main mod
 | `/agents` | Show every agent of the session beside the selected agent's conversation.    |
 | Ctrl+B    | While a foreground agent runs, move all foreground agents to the background. |
 
-In `/agents`, Up and Down select an agent, and Enter opens the conversation alone. Tab switches between the list and the conversation. Press `x` twice to stop the selected agent. Press `f` to switch between a floating and a fullscreen view. Esc goes back one step and then closes the view. Pi's tool expansion key opens and closes all tool calls. With the conversation focused, `t` and `T` move to the next and previous tool call, and Enter opens or closes that one. In Pi's fullscreen terminal mode, you can also scroll with the mouse wheel and click agents and tool calls.
+In `/agents`, Up and Down select an agent, and Enter opens the conversation alone. Tab switches between the list and the conversation. Page Up, Page Down, Home, and End scroll the conversation from either one. Press `x` twice to stop the selected agent. Press `f` to switch between a floating and a fullscreen view. Esc goes back one step and then closes the view. Pi's tool expansion key opens and closes all tool calls. With the conversation focused, `t` and `T` move to the next and previous tool call, and Enter opens or closes that one. In Pi's fullscreen terminal mode, you can also scroll with the mouse wheel and click agents and tool calls.
 
 ## Agent types
 

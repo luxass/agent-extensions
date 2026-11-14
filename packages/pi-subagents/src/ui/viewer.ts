@@ -161,15 +161,21 @@ export async function openSubagentViewer(
             fullscreen = !fullscreen;
           } else if (keybindings.matches(data, "app.tools.expand")) {
             conversation.toggleAllTools();
+          } else if (keybindings.matches(data, "tui.select.pageUp")) {
+            // These four keys scroll the conversation from either pane (S8). The list only takes
+            // Up and Down, so End can follow new output again without changing focus.
+            conversation.scrollBy(-conversation.page);
+          } else if (keybindings.matches(data, "tui.select.pageDown")) {
+            conversation.scrollBy(conversation.page);
+          } else if (matchesKey(data, "home")) {
+            conversation.scrollTo(0);
+          } else if (matchesKey(data, "end")) {
+            conversation.follow();
           } else if (!reading && matchesKey(data, "tab")) {
             focus = focus === "list" ? "conversation" : "list";
           } else if (!reading && focus === "list") {
             if (keybindings.matches(data, "tui.select.up")) list.move(-1);
             else if (keybindings.matches(data, "tui.select.down")) list.move(1);
-            else if (keybindings.matches(data, "tui.select.pageUp")) list.move(-layout.bodyHeight);
-            else if (keybindings.matches(data, "tui.select.pageDown")) list.move(layout.bodyHeight);
-            else if (matchesKey(data, "home")) list.move(-Number.MAX_SAFE_INTEGER);
-            else if (matchesKey(data, "end")) list.move(Number.MAX_SAFE_INTEGER);
             else if (keybindings.matches(data, "tui.select.confirm") && list.selected())
               reading = true;
             else if (data === "x") void list.pressStop().then(() => tui.requestRender());
@@ -179,12 +185,6 @@ export async function openSubagentViewer(
             conversation.toggleSelectedTool();
           else if (keybindings.matches(data, "tui.select.up")) conversation.scrollBy(-1);
           else if (keybindings.matches(data, "tui.select.down")) conversation.scrollBy(1);
-          else if (keybindings.matches(data, "tui.select.pageUp"))
-            conversation.scrollBy(-conversation.page);
-          else if (keybindings.matches(data, "tui.select.pageDown"))
-            conversation.scrollBy(conversation.page);
-          else if (matchesKey(data, "home")) conversation.scrollTo(0);
-          else if (matchesKey(data, "end")) conversation.follow();
           tui.requestRender();
         },
 
