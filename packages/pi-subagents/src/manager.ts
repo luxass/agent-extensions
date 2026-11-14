@@ -553,7 +553,9 @@ export class SubagentManager {
   async stop(name: string, by: "model" | "user"): Promise<SubagentRecord> {
     const record = this.find(name);
     if (!record) throw new Error(`No agent named "${name}" exists in this session.`);
-    if (isSubagentFinished(record.status)) return record;
+    // The first stop decides who stopped it. A later stop from the model must not hide the report
+    // of an agent the user stopped (S5).
+    if (isSubagentFinished(record.status) || record.status === "stopping") return record;
     record.stoppedBy = by;
     const live = this.live.get(record.id);
     if (record.status === "queued") {
