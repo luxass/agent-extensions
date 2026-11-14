@@ -87,6 +87,8 @@ interface LiveRun {
   policy: SubagentPolicy;
   prompt: string;
   child?: SubagentSession;
+  /** Messages the conversation held before this run, so its result comes only from this run. */
+  firstMessage?: number;
   /** Corrections that arrived before the session existed. */
   pendingSteers: string[];
   /** Resolves a waiting foreground `Agent` call. */
@@ -97,8 +99,15 @@ function emptyTokens(): SubagentTokens {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 }
 
-function lastAssistantText(messages: readonly AgentMessage[]): { text: string; error?: string } {
-  for (let index = messages.length - 1; index >= 0; index--) {
+/**
+ * The last answer of one run. `firstMessage` is the message count before the run's prompt, so a
+ * continued run that writes nothing reports nothing, not the previous run's answer or error.
+ */
+function lastAssistantText(
+  messages: readonly AgentMessage[],
+  firstMessage: number,
+): { text: string; error?: string } {
+  for (let index = messages.length - 1; index >= firstMessage; index--) {
     const message = messages[index];
     if (message?.role !== "assistant") continue;
     const text = message.content
@@ -283,9 +292,12 @@ export class SubagentManager {
       maxTurns: policy.maxTurns,
       tools: policy.tools,
       queuedAt: Date.now(),
+      // The previous run's result and times do not describe the run that is about to start.
+      startedAt: undefined,
       endedAt: undefined,
       activity: "queued",
       partial: false,
+      result: "",
       error: undefined,
     } satisfies Partial<SubagentRecord>);
     this.schedule(record, policy, prompt);
@@ -372,6 +384,7 @@ export class SubagentManager {
         onEvent: (event) => this.track(record, live, event),
       });
       live.child = child;
+      live.firstMessage = child.session.messages.length;
       // A reload, /new, or quit can arrive while the session is being created. shutdown() could not
       // dispose a session that did not exist yet, so the run ends here and `finally` disposes it (S7).
       if (this.closed) return;
@@ -380,7 +393,7 @@ export class SubagentManager {
       const steers = live.pendingSteers.splice(0);
       const prompt = steers.length ? `${live.prompt}\n\n${steers.join("\n\n")}` : live.prompt;
       await child.run(prompt);
-      const { text, error } = lastAssistantText(child.session.messages);
+      const { text, error } = lastAssistantText(child.session.messages, live.firstMessage);
       record.result = text;
       record.partial = child.partial;
       if (record.stoppedBy) record.status = "stopped";
@@ -396,7 +409,9 @@ export class SubagentManager {
           status: "failed",
           error: String(error),
         } satisfies Partial<SubagentRecord>);
-      if (live.child) record.result ||= lastAssistantText(live.child.session.messages).text;
+      if (live.child && live.firstMessage !== undefined) {
+        record.result ||= lastAssistantText(live.child.session.messages, live.firstMessage).text;
+      }
     } finally {
       await live.child?.dispose().catch(() => undefined);
     }
