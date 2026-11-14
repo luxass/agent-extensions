@@ -278,7 +278,8 @@ export class SubagentManager {
     if (this.live.has(record.id)) {
       throw new Error(`Agent "${name}" is still finishing its last run. Try again in a moment.`);
     }
-    if (!record.sessionFile || !existsSync(record.sessionFile)) {
+    const startsConversation = this.continuesWithoutConversation(record);
+    if (!startsConversation && (!record.sessionFile || !existsSync(record.sessionFile))) {
       throw new Error(`Agent "${name}" has no saved conversation to continue.`);
     }
     const definition = this.requireType(record.agentType);
@@ -299,6 +300,8 @@ export class SubagentManager {
       maxTurns: policy.maxTurns,
       tools: policy.tools,
       queuedAt: Date.now(),
+      // Without a saved conversation the run creates one.
+      sessionFile: startsConversation ? undefined : record.sessionFile,
       // The previous run's result and times do not describe the run that is about to start.
       startedAt: undefined,
       endedAt: undefined,
@@ -309,6 +312,15 @@ export class SubagentManager {
     } satisfies Partial<SubagentRecord>);
     this.schedule(record, policy, prompt);
     return record;
+  }
+
+  /**
+   * True for an agent the session interrupted before it saved a conversation, such as one that was
+   * still queued at a reload. Continuing it starts its conversation with the new prompt (S7).
+   */
+  continuesWithoutConversation(record: SubagentRecord): boolean {
+    const saved = Boolean(record.sessionFile && existsSync(record.sessionFile));
+    return record.status === "interrupted" && !saved;
   }
 
   private requireType(type: string): SubagentDefinition {

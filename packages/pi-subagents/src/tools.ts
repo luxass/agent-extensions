@@ -79,6 +79,12 @@ export function registerSubagentTools(pi: ExtensionAPI, manager: SubagentManager
       return new Text(theme.fg(context.isError ? "error" : "text", text), 0, 0);
     },
     async execute(_toolCallId, params, signal, onUpdate) {
+      // Checked before the launch changes the record.
+      const continued = params.resume ? manager.find(params.resume) : undefined;
+      const startedOver =
+        continued && manager.continuesWithoutConversation(continued)
+          ? `${continued.name} was interrupted before it started, so it has no earlier conversation. It began now with only this prompt.\n\n`
+          : "";
       // StringEnum keeps the schema provider-friendly but types its value as unknown.
       const record = manager.launch({
         ...params,
@@ -89,7 +95,7 @@ export function registerSubagentTools(pi: ExtensionAPI, manager: SubagentManager
         const where =
           record.status === "queued" ? "queued for the background" : "running in the background";
         return subagentToolResult(
-          `Started ${record.name} (${record.agentType}), ${where}. Its result arrives by itself. Do not poll it or repeat its work. Continue with other work, or tell the user what you started and end your turn.`,
+          `${startedOver}Started ${record.name} (${record.agentType}), ${where}. Its result arrives by itself. Do not poll it or repeat its work. Continue with other work, or tell the user what you started and end your turn.`,
           details,
         );
       }
@@ -109,7 +115,7 @@ export function registerSubagentTools(pi: ExtensionAPI, manager: SubagentManager
             `Stopped ${record.name} because you were interrupted.`,
             details,
           );
-        return subagentToolResult(subagentFinishedText(record), details);
+        return subagentToolResult(startedOver + subagentFinishedText(record), details);
       } finally {
         unsubscribe();
       }
