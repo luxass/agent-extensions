@@ -58,8 +58,8 @@ export async function openSubagentViewer(
       };
 
       const footer = () => {
-        const record = list.selected();
-        if (record && list.confirmStopId === record.id) {
+        const record = list.awaitingStop();
+        if (record) {
           return theme.fg(
             "warning",
             ` Press x again to stop ${record.name}. Any other key cancels.`,
@@ -149,7 +149,7 @@ export async function openSubagentViewer(
         },
 
         handleInput(data) {
-          const confirming = list.confirmStopId !== undefined;
+          const confirming = list.awaitingStop() !== undefined;
           if (confirming && data !== "x") list.confirmStopId = undefined;
 
           if (keybindings.matches(data, "tui.select.cancel")) {

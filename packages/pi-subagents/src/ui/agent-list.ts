@@ -38,10 +38,27 @@ export class SubagentList {
     this.select(records[next]?.id);
   }
 
+  /**
+   * The selected agent while its stop waits for a second `x`. An agent that finished or is already
+   * stopping has nothing left to confirm, so the wait ends.
+   */
+  awaitingStop(): SubagentRecord | undefined {
+    const record = this.selected();
+    if (!record || this.confirmStopId !== record.id) return undefined;
+    if (isSubagentFinished(record.status) || record.status === "stopping") {
+      this.confirmStopId = undefined;
+      return undefined;
+    }
+    return record;
+  }
+
   /** First press asks for confirmation, second press stops the selected agent (S6, S8). */
   async pressStop(): Promise<void> {
     const record = this.selected();
-    if (!record || isSubagentFinished(record.status) || record.status === "stopping") return;
+    if (!record || isSubagentFinished(record.status) || record.status === "stopping") {
+      this.confirmStopId = undefined;
+      return;
+    }
     if (this.confirmStopId !== record.id) {
       this.confirmStopId = record.id;
       return;
