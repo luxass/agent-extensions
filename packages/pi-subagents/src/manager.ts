@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
+import type { Usage } from "@earendil-works/pi-ai";
 import {
   getAgentDir,
   SessionManager,
@@ -14,6 +15,14 @@ import {
 
 import { isSubagentName, type SubagentDefinition } from "./agents.ts";
 import { subagentMessageText } from "./message-text.ts";
+import {
+  addSubagentUsage,
+  emptySubagentUsage,
+  hasSubagentUsage,
+  savedSubagentCost,
+  SUBAGENT_USAGE_ENTRY,
+  type SubagentRunUsage,
+} from "./costs.ts";
 import {
   createSubagentRuntime,
   createSubagentSession,
@@ -112,6 +121,10 @@ interface LiveRun {
   firstMessage?: number;
   /** Corrections that arrived before the session existed. */
   pendingSteers: string[];
+  /** What this run's model replies used so far. A run that used nothing saves no usage entry. */
+  usage: Usage;
+  /** True once the run's usage entry is written, so it is written once. */
+  usageSaved?: boolean;
   /** Resolves a waiting foreground `Agent` call. */
   release?: (outcome: "finished" | "background") => void;
 }
@@ -155,6 +168,10 @@ export class SubagentManager {
   private readonly listeners = new Set<() => void>();
   /** How each earlier run of a continued agent ended, by `<id>:<run>`, for its `Agent` card. */
   private readonly earlierRuns = new Map<string, SubagentRecord>();
+  /** Cost of the runs whose usage entry is saved in this session. */
+  private savedCost = 0;
+  /** Number of saved usage entries in this session. */
+  private savedRuns = 0;
   /** The last saved conversation read for `/agents`, so drawing it does not read the file again. */
   private savedTranscript: { key: string; messages: readonly AgentMessage[] } | undefined;
   private runtime: Promise<ModelRuntime> | undefined;
@@ -211,6 +228,10 @@ export class SubagentManager {
    */
   restore(): void {
     for (const entry of this.ctx.sessionManager.getEntries()) {
+      if (entry.type === "custom" && entry.customType === SUBAGENT_USAGE_ENTRY) {
+        this.savedCost += savedSubagentCost(entry.data);
+        this.savedRuns++;
+      }
       if (entry.type !== "custom" || entry.customType !== SUBAGENT_RECORD_ENTRY) continue;
       const record = entry.data as SubagentRecord | undefined;
       if (record?.sessionId !== this.sessionId) continue;
@@ -371,7 +392,12 @@ export class SubagentManager {
   }
 
   private schedule(record: SubagentRecord, policy: SubagentPolicy, prompt: string): void {
-    this.live.set(record.id, { policy, prompt, pendingSteers: [] });
+    this.live.set(record.id, {
+      policy,
+      prompt,
+      pendingSteers: [],
+      usage: emptySubagentUsage(),
+    });
     record.run++;
     record.task = prompt.split("\n")[0] ?? "";
     this.persist(record);
@@ -476,6 +502,7 @@ export class SubagentManager {
     else if (record.stoppedBy === "model") record.receipt = "suppressed";
     else if (record.receipt === "pending") record.receipt = "unread";
     live.release?.("finished");
+    this.saveRunUsage(record, live);
     this.persist(record);
     if (!foreground) this.onRunSettled(record);
     this.pump();
@@ -503,6 +530,7 @@ export class SubagentManager {
       };
       record.contextPercent =
         live.child?.session.getContextUsage()?.percent ?? record.contextPercent;
+      addSubagentUsage(live.usage, usage);
     } else return;
     this.notify();
   }
@@ -588,6 +616,44 @@ export class SubagentManager {
     return record;
   }
 
+  /**
+   * Saves what a run used as one entry in the main session, so costs survive a reload and other
+   * extensions can add them up. A run that used no tokens saves nothing.
+   */
+  private saveRunUsage(record: SubagentRecord, live: LiveRun): void {
+    if (live.usageSaved || !hasSubagentUsage(live.usage)) return;
+    live.usageSaved = true;
+    const data: SubagentRunUsage = {
+      sessionId: this.sessionId,
+      id: record.id,
+      name: record.name,
+      agentType: record.agentType,
+      run: record.run,
+      provider: live.policy.model.provider,
+      model: live.policy.model.id,
+      usage: live.usage,
+    };
+    this.pi.appendEntry(SUBAGENT_USAGE_ENTRY, data);
+    this.savedCost += live.usage.cost.total;
+    this.savedRuns++;
+  }
+
+  /** Whether any agent run in this session has used a model, saved or still running. */
+  hasAgentUsage(): boolean {
+    return (
+      this.savedRuns > 0 || [...this.live.values()].some((live) => hasSubagentUsage(live.usage))
+    );
+  }
+
+  /** What this session's agent runs cost so far: saved runs plus runs still going. */
+  agentCost(): number {
+    let cost = this.savedCost;
+    for (const live of this.live.values()) {
+      if (!live.usageSaved) cost += live.usage.cost.total;
+    }
+    return cost;
+  }
+
   /** Marks a result as returned to the model, so it is never delivered again. */
   markReceipt(record: SubagentRecord, receipt: SubagentReceipt): void {
     record.receipt = receipt;
@@ -633,8 +699,10 @@ export class SubagentManager {
         receipt: "suppressed",
         endedAt: Date.now(),
       } satisfies Partial<SubagentRecord>);
-      this.persist(record);
       const live = this.live.get(record.id);
+      // An interrupted run still cost what it used so far.
+      if (live) this.saveRunUsage(record, live);
+      this.persist(record);
       live?.release?.("finished");
       if (live?.child) running.push(live.child.dispose());
     }
