@@ -34,7 +34,7 @@ Add an agent type as a Markdown file. Files in later folders replace types with 
 3. `.agents/agents/` in the project
 4. `.pi/agents/` in the project
 
-Project folders load only when you trust the project. The file body is added after Pi's system prompt.
+Project folders load only when you trust the project. The file body is added after Pi's system prompt. If `PI_CODING_AGENT_DIR` moves Pi's folder, the first folder is `agents/` inside it.
 
 ```markdown
 ---

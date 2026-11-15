@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { arr, compile, int, obj, oneOf, opt, str, type Static } from "@earendil-works/pi-schema";
 
 const SUBAGENT_NAME_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
@@ -53,7 +53,10 @@ export async function loadSubagentDefinitions(
 ): Promise<Map<string, SubagentDefinition>> {
   const directories = [
     fileURLToPath(new URL("./agents/", import.meta.url)),
-    join(homedir(), ".pi/agent/agents"),
+    // Pi's own folder, ~/.pi/agent unless PI_CODING_AGENT_DIR moves it. Agent conversations and
+    // skills are found through the same lookup.
+    join(getAgentDir(), "agents"),
+    // The cross-tool folder is not Pi's, so it stays in the home folder.
     join(homedir(), ".agents/agents"),
     ...(trusted ? [join(cwd, ".agents/agents"), join(cwd, ".pi/agents")] : []),
   ];
