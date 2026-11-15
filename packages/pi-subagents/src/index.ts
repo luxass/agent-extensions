@@ -12,6 +12,7 @@ import { readSubagentSettings } from "./settings.ts";
 import { registerAgentTool, registerSubagentTools } from "./tools.ts";
 import { renderSubagentResultMessage } from "./ui/agent-card.ts";
 import { installBackgroundShortcut } from "./ui/background-shortcut.ts";
+import { installSubagentCostStatus, SUBAGENT_COST_STATUS } from "./ui/cost-status.ts";
 import { openSubagentViewer } from "./ui/viewer.ts";
 import { installSubagentWidget } from "./ui/widget.ts";
 
@@ -64,6 +65,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
       const current = manager;
       ctx.ui.addAutocompleteProvider(subagentMentionAutocomplete(() => current.availableTypes()));
       installSubagentWidget(ctx, current);
+      installSubagentCostStatus(ctx, current);
       removeShortcut = installBackgroundShortcut(pi, ctx, current);
     }
     // Last, so the tools exist when a restored result starts a main-model turn.
@@ -95,7 +97,10 @@ export default function piSubagents(pi: ExtensionAPI): void {
     delivery?.dispose();
     removeShortcut?.();
     removeShortcut = undefined;
-    if (ctx.mode === "tui") ctx.ui.setWidget("subagents", undefined);
+    if (ctx.mode === "tui") {
+      ctx.ui.setWidget("subagents", undefined);
+      ctx.ui.setStatus(SUBAGENT_COST_STATUS, undefined);
+    }
     delivery = undefined;
     const current = manager;
     manager = undefined;

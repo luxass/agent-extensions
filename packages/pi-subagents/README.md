@@ -86,3 +86,9 @@ Set these under `subagents` in Pi's `settings.json`. Project settings apply only
 | `delivery.mode`       | `"grouped"`    | `"grouped"` reports agents of one request together, after at most 60 seconds. `"immediate"` reports each result when it is ready. |
 
 Agent conversations are saved under `~/.pi/agent/subagents/<session id>/`. After `/reload` or a resumed session, finished agents can still be read and continued. Agents that were running or queued show as interrupted and can also be continued. An agent that never started begins with the new prompt only. A result that finished but was not yet delivered arrives after the reload.
+
+## Costs
+
+The cost in Pi's footer counts only the main session. The footer's status line shows what agents cost in the session, for example `agents $0.123`. It appears when an agent has used a model, and it includes agents that are still running.
+
+When a run ends, its token usage and cost are saved in the session as a `subagents-usage` entry. A run stopped by `/reload` or by quitting Pi saves what it used up to then. [`@luxass/pi-cost-explorer`](../pi-cost-explorer/README.md) adds these entries to `/cost` as the source "Agents".
