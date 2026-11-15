@@ -18,7 +18,7 @@ const FRAME_LINES = 6;
 
 /**
  * `/agents`: the agent list beside the selected conversation, or the conversation alone in the
- * reading view. It only reads and stops agents. There is no message input (S8).
+ * reading view. It only reads and stops agents. There is no message input.
  */
 export async function openSubagentViewer(
   ctx: ExtensionCommandContext,
@@ -162,7 +162,7 @@ export async function openSubagentViewer(
           } else if (keybindings.matches(data, "app.tools.expand")) {
             conversation.toggleAllTools();
           } else if (keybindings.matches(data, "tui.select.pageUp")) {
-            // These four keys scroll the conversation from either pane (S8). The list only takes
+            // These four keys scroll the conversation from either pane. The list only takes
             // Up and Down, so End can follow new output again without changing focus.
             conversation.scrollBy(-conversation.page);
           } else if (keybindings.matches(data, "tui.select.pageDown")) {
@@ -188,7 +188,7 @@ export async function openSubagentViewer(
           tui.requestRender();
         },
 
-        // Pi routes mouse events only in fullscreen terminal mode. Every action also has a key (S8).
+        // Pi routes mouse events only in fullscreen terminal mode. Every action also has a key.
         handleMouse(event: TuiMouseEvent) {
           const line = event.y - layout.bodyTop;
           const inBody = line >= 0 && line < layout.bodyHeight;

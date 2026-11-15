@@ -43,7 +43,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
   // directory, no session id, and no trust decision yet. Pi runs this factory before it asks about
   // project trust, so project agents and settings could not be filtered there. Pi also runs
   // factories in invocations that never start a session. /new, /resume, /fork, and /reload load a
-  // new runtime, so this runs again for each session (S3, S7).
+  // new runtime, so this runs again for each session.
   pi.on("session_start", async (_event, ctx: ExtensionContext) => {
     const warn = (message: string) => {
       if (ctx.hasUI) ctx.ui.notify(message, "warning");
@@ -58,7 +58,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
     manager = new SubagentManager(pi, ctx, sessionId, definitions, settings);
     manager.restore();
     delivery = new SubagentDelivery(pi, ctx, manager);
-    // Again, now that the agent types are known, so the description can list them (S1).
+    // Again, now that the agent types are known, so the description can list them.
     registerAgentTool(pi, () => manager, manager.availableTypes());
     if (ctx.mode === "tui") {
       const current = manager;
@@ -71,7 +71,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
     delivery.deliverRestored();
   });
 
-  // A leading type mention asks the main model to start that type. The instruction stays hidden (S2).
+  // A leading type mention asks the main model to start that type. The instruction stays hidden.
   pi.on("before_agent_start", (event, ctx) => {
     if (!manager || event.messageType !== "user" || ctx.mode !== "tui") return undefined;
     const instruction = subagentMentionInstruction(event.prompt, manager.availableTypes());
@@ -81,7 +81,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
     };
   });
 
-  // Requests are counted per agent_start, so grouping follows the user's request, not each turn (S5).
+  // Requests are counted per agent_start, so grouping follows the user's request, not each turn.
   pi.on("agent_start", () => {
     if (manager) manager.requestId++;
     delivery?.agentStarted();
@@ -92,7 +92,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
   pi.on("agent_settled", () => delivery?.agentSettled());
 
   pi.on("session_shutdown", async (_event, ctx) => {
-    // Delivery stops first, so aborted runs never deliver (S7).
+    // Delivery stops first, so aborted runs never deliver.
     delivery?.dispose();
     removeShortcut?.();
     removeShortcut = undefined;

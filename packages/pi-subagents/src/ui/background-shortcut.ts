@@ -4,7 +4,7 @@ import { isKeyRelease, matchesKey } from "@earendil-works/pi-tui";
 import type { SubagentManager } from "../manager.ts";
 
 /**
- * Ctrl+B moves all running foreground agents to the background (S6). It acts only while one runs
+ * Ctrl+B moves all running foreground agents to the background. It acts only while one runs
  * and no dialog is open. Otherwise the key keeps its editor meaning. Returns the cleanup function.
  */
 export function installBackgroundShortcut(

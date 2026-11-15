@@ -4,12 +4,12 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { isSubagentFinished, type SubagentManager, type SubagentRecord } from "../manager.ts";
 import { subagentStatusLabel, subagentStatusMark } from "./agent-status.ts";
 
-/** Left pane of `/agents`: every agent of the session, with a selection that follows the agent (S8). */
+/** Left pane of `/agents`: every agent of the session, with a selection that follows the agent. */
 export class SubagentList {
   private selectedId: string | undefined;
   private top = 0;
   private renderedIds: (string | undefined)[] = [];
-  /** Agent whose stop waits for a second `x` (S8). */
+  /** Agent whose stop waits for a second `x`. */
   confirmStopId: string | undefined;
 
   constructor(
@@ -52,7 +52,7 @@ export class SubagentList {
     return record;
   }
 
-  /** First press asks for confirmation, second press stops the selected agent (S6, S8). */
+  /** First press asks for confirmation, second press stops the selected agent. */
   async pressStop(): Promise<void> {
     const record = this.selected();
     if (!record || isSubagentFinished(record.status) || record.status === "stopping") {

@@ -19,22 +19,22 @@ const agentSchema = obj({
 });
 const validateAgent = compile(agentSchema);
 
-/** A validated agent type from a Markdown file (S3). */
+/** A validated agent type from a Markdown file. */
 export interface SubagentDefinition extends Static<typeof agentSchema> {
   name: string;
   body: string;
   file: string;
 }
 
-/** Tools an agent gets when its file leaves out `tools` (S4). */
+/** Tools an agent gets when its file leaves out `tools`. */
 export const DEFAULT_SUBAGENT_TOOLS = ["read", "bash", "edit", "write"];
 
-/** Task and type names: lowercase words joined by hyphens (S1, S3). */
+/** Task and type names: lowercase words joined by hyphens. */
 export function isSubagentName(name: string): boolean {
   return new RegExp(SUBAGENT_NAME_PATTERN).test(name);
 }
 
-/** Agent coordination stays in the main session, so agents cannot use these tools (S4). */
+/** Agent coordination stays in the main session, so agents cannot use these tools. */
 export function isSubagentControlTool(name: string): boolean {
   return (
     name === "Agent" ||
@@ -45,7 +45,7 @@ export function isSubagentControlTool(name: string): boolean {
   );
 }
 
-/** Loads agent types in precedence order. Project folders load only when trusted (S3). */
+/** Loads agent types in precedence order. Project folders load only when trusted. */
 export async function loadSubagentDefinitions(
   cwd: string,
   trusted: boolean,

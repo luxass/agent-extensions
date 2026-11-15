@@ -34,7 +34,7 @@ export function subagentFinishedText(record: SubagentRecord): string {
   return `${subagentStatusLine(record)}\n\n${body}${error}`;
 }
 
-/** Describes the available types and their tools, so the model can choose (S1). */
+/** Describes the available types and their tools, so the model can choose. */
 export function agentToolDescription(available: readonly SubagentDefinition[] | undefined): string {
   const types = (available ?? [])
     .map((definition) => {

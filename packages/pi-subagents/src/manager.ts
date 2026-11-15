@@ -26,10 +26,10 @@ import type { SubagentSettings } from "./settings.ts";
 
 type AgentMessage = AgentSession["messages"][number];
 
-/** Custom entry type that stores agent records in the main session (S7). */
+/** Custom entry type that stores agent records in the main session. */
 export const SUBAGENT_RECORD_ENTRY = "subagents-record";
 
-/** Whether the main model may still receive this run's result automatically (S5). */
+/** Whether the main model may still receive this run's result automatically. */
 export type SubagentReceipt = "pending" | "unread" | "consumed" | "delivered" | "suppressed";
 
 /** One named agent and its latest run. Saved in the main session with `pi.appendEntry`. */
@@ -130,7 +130,7 @@ function describeToolCall(name: string, args: unknown): string {
   return detail ? `${name} ${detail.split("\n")[0]}` : name;
 }
 
-/** Owns every agent of one main session: names, queue, runs, persistence, and events (S1, S6, S7, S9). */
+/** Owns every agent of one main session: names, queue, runs, persistence, and events. */
 export class SubagentManager {
   readonly records = new Map<string, SubagentRecord>();
   private readonly live = new Map<string, LiveRun>();
@@ -138,13 +138,13 @@ export class SubagentManager {
   private readonly listeners = new Set<() => void>();
   /** Last `subagents:activity` payload sent per agent, so unchanged updates are not repeated. */
   private readonly lastActivity = new Map<string, string>();
-  /** How each earlier run of a continued agent ended, by `<id>:<run>`, for its `Agent` card (S8). */
+  /** How each earlier run of a continued agent ended, by `<id>:<run>`, for its `Agent` card. */
   private readonly earlierRuns = new Map<string, SubagentRecord>();
   /** The last saved conversation read for `/agents`, so drawing it does not read the file again. */
   private savedTranscript: { key: string; messages: readonly AgentMessage[] } | undefined;
   private runtime: Promise<ModelRuntime> | undefined;
   private closed = false;
-  /** Main-session request counter, advanced on `agent_start` (S5). */
+  /** Main-session request counter, advanced on `agent_start`. */
   requestId = 0;
   /** Called once a run settles, so delivery can decide what the main model receives. */
   onRunSettled: (record: SubagentRecord) => void = () => {};
@@ -157,7 +157,7 @@ export class SubagentManager {
     public settings: SubagentSettings,
   ) {}
 
-  /** Agent types the model may start: loaded definitions minus `disabledAgents` (S9). */
+  /** Agent types the model may start: loaded definitions minus `disabledAgents`. */
   availableTypes(): SubagentDefinition[] {
     return [...this.definitions.values()].filter(
       (definition) => !this.settings.disabledAgents.includes(definition.name),
@@ -192,7 +192,7 @@ export class SubagentManager {
 
   /**
    * Restores this session's saved agents. Unfinished runs become interrupted and never deliver.
-   * A finished result that was still waiting stays unread, so it is delivered now (S5, S7).
+   * A finished result that was still waiting stays unread, so it is delivered now.
    */
   restore(): void {
     for (const entry of this.ctx.sessionManager.getEntries()) {
@@ -218,7 +218,7 @@ export class SubagentManager {
     }
   }
 
-  /** Starts a new named agent or continues a finished one (S1). Throws before reserving anything if invalid. */
+  /** Starts a new named agent or continues a finished one. Throws before reserving anything if invalid. */
   launch(params: SubagentLaunch): SubagentRecord {
     if (this.closed) throw new Error("Agents are shutting down.");
     const prompt = params.prompt.trim();
@@ -340,7 +340,7 @@ export class SubagentManager {
 
   /**
    * True for an agent the session interrupted before it saved a conversation, such as one that was
-   * still queued at a reload. Continuing it starts its conversation with the new prompt (S7).
+   * still queued at a reload. Continuing it starts its conversation with the new prompt.
    */
   continuesWithoutConversation(record: SubagentRecord): boolean {
     const saved = Boolean(record.sessionFile && existsSync(record.sessionFile));
@@ -365,7 +365,7 @@ export class SubagentManager {
     record.run++;
     record.task = prompt.split("\n")[0] ?? "";
     this.persist(record);
-    // Foreground calls bypass the background cap (S9).
+    // Foreground calls bypass the background cap.
     if (record.background && this.runningBackground() >= this.settings.maxConcurrent) {
       this.queue.push(record.id);
       this.notify();
@@ -429,7 +429,7 @@ export class SubagentManager {
       live.child = child;
       live.firstMessage = child.session.messages.length;
       // A reload, /new, or quit can arrive while the session is being created. shutdown() could not
-      // dispose a session that did not exist yet, so the run ends here and `finally` disposes it (S7).
+      // dispose a session that did not exist yet, so the run ends here and `finally` disposes it.
       if (this.closed) return;
       record.sessionFile = child.session.sessionManager.getSessionFile();
       if (record.status === "stopping") throw new Error("stopped");
@@ -466,7 +466,7 @@ export class SubagentManager {
     record.endedAt = Date.now();
     record.activity = record.status;
     this.live.delete(record.id);
-    // A waiting foreground call returns the result itself, so it counts as read (S5).
+    // A waiting foreground call returns the result itself, so it counts as read.
     const foreground = Boolean(live.release);
     if (foreground) record.receipt = "consumed";
     else if (record.stoppedBy === "model") record.receipt = "suppressed";
@@ -528,7 +528,7 @@ export class SubagentManager {
     this.notify();
   }
 
-  /** Waits for a foreground run. Resolves early when Ctrl+B moves it to the background (S6). */
+  /** Waits for a foreground run. Resolves early when Ctrl+B moves it to the background. */
   waitForeground(
     record: SubagentRecord,
     signal: AbortSignal | undefined,
@@ -540,7 +540,7 @@ export class SubagentManager {
         live.release = undefined;
         // The aborted tool call already tells the model, so nothing arrives later.
         record.receipt = "suppressed";
-        // Esc in the main session stops the agents it waits for (S6).
+        // Esc in the main session stops the agents it waits for.
         void this.stop(record.name, "user");
         resolvePromise("aborted");
       };
@@ -554,12 +554,12 @@ export class SubagentManager {
     });
   }
 
-  /** Whether a foreground agent is running, for Ctrl+B and the hint (S6). */
+  /** Whether a foreground agent is running, for Ctrl+B and the hint. */
   hasForeground(): boolean {
     return this.list().some((record) => !record.background && record.status === "running");
   }
 
-  /** Moves every running foreground agent to the background without stopping it (S6). */
+  /** Moves every running foreground agent to the background without stopping it. */
   moveForegroundToBackground(): number {
     let moved = 0;
     for (const record of this.list()) {
@@ -573,7 +573,7 @@ export class SubagentManager {
     return moved;
   }
 
-  /** Sends a correction from the main model to a running or queued agent (S6). */
+  /** Sends a correction from the main model to a running or queued agent. */
   async steer(name: string, message: string): Promise<SubagentRecord> {
     const record = this.find(name);
     if (!record) throw new Error(`No agent named "${name}" exists in this session.`);
@@ -587,12 +587,12 @@ export class SubagentManager {
     return record;
   }
 
-  /** Stops one running or queued agent. Other agents are unaffected (S6). */
+  /** Stops one running or queued agent. Other agents are unaffected. */
   async stop(name: string, by: "model" | "user"): Promise<SubagentRecord> {
     const record = this.find(name);
     if (!record) throw new Error(`No agent named "${name}" exists in this session.`);
     // The first stop decides who stopped it. A later stop from the model must not hide the report
-    // of an agent the user stopped (S5).
+    // of an agent the user stopped.
     if (isSubagentFinished(record.status) || record.status === "stopping") return record;
     record.stoppedBy = by;
     const live = this.live.get(record.id);
@@ -610,7 +610,7 @@ export class SubagentManager {
     return record;
   }
 
-  /** Marks a result as returned to the model, so it is never delivered again (S5). */
+  /** Marks a result as returned to the model, so it is never delivered again. */
   markReceipt(record: SubagentRecord, receipt: SubagentReceipt): void {
     record.receipt = receipt;
     this.persist(record);
@@ -641,7 +641,7 @@ export class SubagentManager {
     return this.live.get(record.id)?.child?.session.getToolDefinition(toolName);
   }
 
-  /** Marks unfinished work interrupted, stops it, and emits `subagents:disposed` last (S7, S9). */
+  /** Marks unfinished work interrupted, stops it, and emits `subagents:disposed` last. */
   async shutdown(): Promise<void> {
     if (this.closed) return;
     this.closed = true;

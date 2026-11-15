@@ -9,13 +9,13 @@ import {
   type Validator,
 } from "@earendil-works/pi-schema";
 
-/** Effective subagent settings after field-wise defaults (S9). */
+/** Effective subagent settings after field-wise defaults. */
 export interface SubagentSettings {
   maxConcurrent: number;
   maxTurns: number;
   backgroundByDefault: boolean;
   disabledAgents: string[];
-  /** Providers to choose from, in order, when a model name matches on several providers (S3). */
+  /** Providers to choose from, in order, when a model name matches on several providers. */
   preferredProviders: string[];
   widget: "background" | "all" | "off";
   delivery: { mode: "grouped" | "immediate" };
@@ -34,7 +34,7 @@ const DEFAULT_SUBAGENT_SETTINGS: SubagentSettings = {
 // Any object. Its fields are checked one at a time below.
 const anyObject: Validator<Record<string, unknown>> = compile(obj({}, { open: true }));
 
-// One check per field, so an invalid field falls back alone and valid fields keep their values (S9).
+// One check per field, so an invalid field falls back alone and valid fields keep their values.
 const subagentSettingChecks = {
   maxConcurrent: compile(int({ minimum: 1 })),
   maxTurns: compile(int({ minimum: 0 })),

@@ -44,7 +44,7 @@ const PACKAGE_DIRECTORY = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const WRAP_UP_INSTRUCTION =
   "You have one turn left. Wrap up now: report your findings, what you changed, and any unfinished work. Do not start new work.";
 
-/** Optional `Agent` call parameters. Values in the agent file win over these (S3). */
+/** Optional `Agent` call parameters. A model here wins over the agent file's. The file's other values win. */
 export interface SubagentOverrides {
   model?: string;
   thinking?: SubagentThinking;
@@ -52,7 +52,7 @@ export interface SubagentOverrides {
   inherit_context?: boolean;
 }
 
-/** Launch policy resolved and validated before a task name is reserved (S1, S3, S4). */
+/** Launch policy resolved and validated before a task name is reserved. */
 export interface SubagentPolicy {
   definition: SubagentDefinition;
   model: SubagentModel;
@@ -77,7 +77,7 @@ export async function createSubagentRuntime(ctx: ExtensionContext): Promise<Mode
   return runtime;
 }
 
-/** Copies the conversation the main model currently sees, for `inherit_context` (S7). */
+/** Copies the conversation the main model currently sees, for `inherit_context`. */
 export function inheritedSubagentContext(ctx: ExtensionContext): Message[] {
   // Pi's own conversion before a model request. Summaries, extension messages such as earlier agent
   // results, and `!` command output become user messages, exactly as the main model sees them.
@@ -106,7 +106,7 @@ export function inheritedSubagentContext(ctx: ExtensionContext): Message[] {
   return inherited;
 }
 
-/** The model an agent runs on: the named one, or the caller's when no model is named (S3). */
+/** The model an agent runs on: the named one, or the caller's when no model is named. */
 function resolveSubagentModel(
   ctx: ExtensionContext,
   requested: string | undefined,
@@ -169,7 +169,7 @@ export function resolveSubagentPolicy(options: {
     }
   }
   if (codemode && !tools.includes("codemode")) tools.push("codemode");
-  // Checked here so a missing skill rejects the call before its task name is used (S1). Pi lists
+  // Checked here so a missing skill rejects the call before its task name is used. Pi lists
   // each of the main session's skills as the command `skill:<name>`.
   const mainSkills = new Set(
     pi.getCommands().flatMap((command) => (command.source === "skill" ? [command.name] : [])),
@@ -180,7 +180,7 @@ export function resolveSubagentPolicy(options: {
   }
   return {
     definition,
-    // A model named in the call wins. The file's model is the type's default (S3).
+    // A model named in the call wins. The file's model is the type's default.
     model: resolveSubagentModel(ctx, overrides.model ?? definition.model, settings),
     thinking: definition.thinking ?? overrides.thinking ?? ctx.thinkingLevel ?? "off",
     maxTurns: definition.max_turns ?? overrides.max_turns ?? settings.maxTurns,
@@ -201,7 +201,7 @@ export interface SubagentSession {
   dispose(): Promise<void>;
 }
 
-/** Creates or reopens an agent's session without loading unrelated extensions (S3, S4, S6, S7). */
+/** Creates or reopens an agent's session without loading unrelated extensions. */
 export async function createSubagentSession(options: {
   ctx: ExtensionContext;
   pi: ExtensionAPI;
@@ -246,7 +246,7 @@ export async function createSubagentSession(options: {
   });
   await resourceLoader.reload();
   // reload() collects load errors and does not throw. Without its extension the agent would run
-  // without a tool it was given, and still report success (S4).
+  // without a tool it was given, and still report success.
   const [loadError] = resourceLoader.getExtensions().errors;
   if (loadError) {
     throw new Error(`Extension ${loadError.path} failed to load for the agent: ${loadError.error}`);
@@ -313,7 +313,7 @@ export async function createSubagentSession(options: {
     if (event.type === "turn_end") {
       turns++;
       // A turn without tool calls is the agent's final answer. A wrap-up message there would force
-      // one more turn, and that reply would replace the answer (S6: stop only if work remains).
+      // one more turn, and that reply would replace the answer.
       const workRemains = event.toolResults.length > 0;
       if (policy.maxTurns > 1 && turns === policy.maxTurns - 1 && workRemains) {
         session.agent.steer({ role: "user", content: WRAP_UP_INSTRUCTION, timestamp: Date.now() });
@@ -323,7 +323,7 @@ export async function createSubagentSession(options: {
   });
 
   try {
-    // Print mode has no UI, so interactive tools fail inside an agent (S4).
+    // Print mode has no UI, so interactive tools fail inside an agent.
     await session.bindExtensions({ mode: "print" });
   } catch (error) {
     await child.dispose();

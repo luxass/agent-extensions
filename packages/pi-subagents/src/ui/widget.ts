@@ -12,7 +12,7 @@ import {
 const ANIMATION_INTERVAL_MS = 120;
 
 /**
- * Shows running and queued agents above the editor (S8). The widget is always installed, so its
+ * Shows running and queued agents above the editor. The widget is always installed, so its
  * timer also animates `Agent` cards when `widget` is "off".
  */
 export function installSubagentWidget(ctx: ExtensionContext, manager: SubagentManager): void {

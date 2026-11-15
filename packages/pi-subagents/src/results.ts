@@ -8,13 +8,13 @@ import type {
 
 import { isSubagentFinished, type SubagentManager, type SubagentRecord } from "./manager.ts";
 
-/** Custom message type of automatically delivered results (S5). */
+/** Custom message type of automatically delivered results. */
 export const SUBAGENT_RESULT_MESSAGE = "subagents-result";
 
-/** Longest result text the main model receives automatically (S5). */
+/** Longest result text the main model receives automatically. */
 export const SUBAGENT_RESULT_LIMIT = 8000;
 
-/** Longest wait for siblings in grouped delivery, from the first ready result (S5). */
+/** Longest wait for siblings in grouped delivery, from the first ready result. */
 const GROUP_WAIT_MS = 60_000;
 
 /** Snapshots shown by the result block. They keep the full text for expansion. */
@@ -22,7 +22,7 @@ export interface SubagentResultDetails {
   records: SubagentRecord[];
 }
 
-/** Cuts automatically delivered text at the limit and points to the full result (S5). */
+/** Cuts automatically delivered text at the limit and points to the full result. */
 function cutSubagentResult(text: string, name: string): string {
   if (text.length <= SUBAGENT_RESULT_LIMIT) return text;
   return (
@@ -43,7 +43,7 @@ function resultText(record: SubagentRecord): string {
   return `${header}\n\n${cutSubagentResult(body, record.name)}`;
 }
 
-/** Decides when and how finished background results reach the main model (S5). */
+/** Decides when and how finished background results reach the main model. */
 export class SubagentDelivery {
   private busy = false;
   private disposed = false;
@@ -76,7 +76,7 @@ export class SubagentDelivery {
 
   /**
    * After a reload or a resumed session: delivers results that had finished before it but were
-   * still waiting, for example for a sibling in grouped mode (S5).
+   * still waiting, for example for a sibling in grouped mode.
    */
   deliverRestored(): void {
     for (const record of this.manager.list()) {
@@ -181,7 +181,7 @@ export class SubagentDelivery {
 
   private send(batch: SubagentRecord[]): void {
     if (!batch.length) return;
-    // Agents the user stopped report without starting a main-model turn (S5).
+    // Agents the user stopped report without starting a main-model turn.
     const triggerTurn = batch.some((record) => record.stoppedBy !== "user");
     for (const record of batch) this.manager.markReceipt(record, "delivered");
     this.pi.sendMessage(
@@ -197,7 +197,7 @@ export class SubagentDelivery {
     );
   }
 
-  /** Stops delivery before shutdown aborts any agent, so nothing arrives late (S7). */
+  /** Stops delivery before shutdown aborts any agent, so nothing arrives late. */
   dispose(): void {
     this.disposed = true;
     for (const timer of this.timers.values()) clearTimeout(timer);

@@ -27,7 +27,7 @@ function closestModels(available: readonly SubagentModel[], requested: string): 
 }
 
 /**
- * Finds the one available model a `model` value names (S3). `provider/id` is used as written.
+ * Finds the one available model a `model` value names. `provider/id` is used as written.
  * Any other name ignores case, spaces, dots, and hyphens, so `opus 5.5` finds `claude-opus-5-5`.
  *
  * The closest kind of match decides: the whole name, then the end of the id, then any part of it.

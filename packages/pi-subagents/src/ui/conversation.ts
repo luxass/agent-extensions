@@ -52,7 +52,7 @@ function textOf(content: string | readonly { type: string; text?: string }[]): s
 }
 
 /**
- * Read-only conversation of one agent, drawn with Pi's own message and tool components (S8).
+ * Read-only conversation of one agent, drawn with Pi's own message and tool components.
  * It follows new output while at the bottom and counts what arrives while scrolled up.
  */
 export class SubagentConversation {
@@ -61,7 +61,7 @@ export class SubagentConversation {
   private toolRows: ToolRow[] = [];
   private expanded = new Set<string>();
   private allExpanded = false;
-  /** The tool call the keyboard cursor is on (S8: every mouse action also has a key). */
+  /** The tool call the keyboard cursor is on. Every mouse action also has a key. */
   private selectedToolId: string | undefined;
   private recordId: string | undefined;
   private version = "";
@@ -150,7 +150,7 @@ export class SubagentConversation {
           if (part.type !== "toolCall") continue;
           const definition =
             this.manager.toolDefinition(record, part.name) ?? this.builtinTools[part.name];
-          // Arguments come from the agent's model, and renderers print them as they are (S8).
+          // Arguments come from the agent's model, and renderers print them as they are.
           const tool = new ToolExecutionComponent(
             cleanSubagentText(part.name),
             part.id,
@@ -186,21 +186,21 @@ export class SubagentConversation {
     }
   }
 
-  /** Expands or collapses every tool call, from Pi's expand key (S8). */
+  /** Expands or collapses every tool call, from Pi's expand key. */
   toggleAllTools(): void {
     this.allExpanded = !this.allExpanded;
     this.expanded.clear();
     for (const tool of this.tools.values()) tool.setExpanded(this.allExpanded);
   }
 
-  /** Expands or collapses the tool call drawn at a viewport line, for mouse clicks (S8). */
+  /** Expands or collapses the tool call drawn at a viewport line, for mouse clicks. */
   toggleToolAtLine(viewportLine: number): boolean {
     const line = this.scrollTop + viewportLine;
     const row = this.toolRows.find((candidate) => line >= candidate.start && line < candidate.end);
     return row ? this.toggleTool(row.toolCallId) : false;
   }
 
-  /** Moves the tool cursor to the next (1) or previous (-1) tool call and scrolls it into view (S8). */
+  /** Moves the tool cursor to the next (1) or previous (-1) tool call and scrolls it into view. */
   selectTool(delta: 1 | -1): void {
     const ids = [...this.tools.keys()];
     const current = this.selectedToolId ? ids.indexOf(this.selectedToolId) : -1;
@@ -219,7 +219,7 @@ export class SubagentConversation {
     if (row && hidden) this.scrollTo(row.start - 1);
   }
 
-  /** Expands or collapses the tool call under the cursor, the key for a mouse click (S8). */
+  /** Expands or collapses the tool call under the cursor, the key for a mouse click. */
   toggleSelectedTool(): boolean {
     if (!this.selectedToolId) return false;
     // Stop following, so the call stays in view while its height changes.

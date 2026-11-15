@@ -11,7 +11,7 @@ export const SUBAGENT_MENTION_MESSAGE = "subagents-mention";
 
 /**
  * For `@explorer review authentication`, returns a hidden instruction for the main model.
- * Returns undefined when the prompt is not a leading mention of an available type (S2).
+ * Returns undefined when the prompt is not a leading mention of an available type.
  */
 export function subagentMentionInstruction(
   prompt: string,
@@ -22,7 +22,7 @@ export function subagentMentionInstruction(
   return `The user asked for a new "${type}" agent. Call Agent with subagent_type "${type}", a new task name, and a prompt you prepare from their message. Start a new agent even if other ${type} agents exist.`;
 }
 
-/** Adds agent types to `@` completion at the start of the prompt, keeping Pi's file suggestions (S2). */
+/** Adds agent types to `@` completion at the start of the prompt, keeping Pi's file suggestions. */
 export function subagentMentionAutocomplete(
   types: () => readonly SubagentDefinition[],
 ): AutocompleteProviderFactory {

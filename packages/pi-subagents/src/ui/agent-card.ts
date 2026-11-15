@@ -35,7 +35,7 @@ export function subagentTitle(
 }
 
 /**
- * Live progress, then the outcome and one answer line, expandable to the full answer (S8).
+ * Live progress, then the outcome and one answer line, expandable to the full answer.
  * It reads the record on every render, so it stays current while the agent works.
  */
 export class AgentCardBody implements Component {
@@ -98,7 +98,7 @@ export class AgentCardBody implements Component {
   }
 }
 
-/** Renders delivered background results as the same card, inside a message block (S5, S8). */
+/** Renders delivered background results as the same card, inside a message block. */
 export const renderSubagentResultMessage: MessageRenderer<SubagentResultDetails> = (
   message,
   options,

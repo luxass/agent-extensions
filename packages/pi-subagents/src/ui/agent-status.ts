@@ -4,7 +4,7 @@ import type { SubagentRecord } from "../manager.ts";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/** How long a foreground agent runs before its row suggests Ctrl+B (S6). */
+/** How long a foreground agent runs before its row suggests Ctrl+B. */
 export const BACKGROUND_HINT_DELAY_MS = 3000;
 
 // CSI and OSC sequences, then any other escape or control character except newline and tab.
@@ -12,14 +12,14 @@ const CONTROL_SEQUENCES =
   // oxlint-disable-next-line no-control-regex -- matching terminal control sequences is the point.
   /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b.|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 
-/** Removes terminal control sequences from agent output before it is displayed (S8). */
+/** Removes terminal control sequences from agent output before it is displayed. */
 export function cleanSubagentText(text: string): string {
   return text.replace(CONTROL_SEQUENCES, "");
 }
 
 /**
  * Cleans every string inside a value from an agent, such as tool-call arguments or result details.
- * Pi's tool renderers print these as they are, so they are cleaned before a renderer sees them (S8).
+ * Pi's tool renderers print these as they are, so they are cleaned before a renderer sees them.
  */
 export function cleanSubagentValue<Value>(value: Value): Value {
   // The shape stays the same. Only the strings inside it change.
@@ -55,7 +55,7 @@ const STATUS_MARKS = {
   interrupted: ["warning", "!"],
 } as const;
 
-/** The one status mark the widget, cards, and `/agents` share (S8). */
+/** The one status mark the widget, cards, and `/agents` share. */
 export function subagentStatusMark(record: SubagentRecord, theme: Theme): string {
   if (record.status === "running") {
     return theme.fg("accent", SPINNER[Math.floor(Date.now() / 80) % SPINNER.length] ?? "⠋");
@@ -95,7 +95,7 @@ export function subagentCounters(record: SubagentRecord): string {
   return parts.join(" · ");
 }
 
-/** Whether a foreground row should show the Ctrl+B hint now (S6). */
+/** Whether a foreground row should show the Ctrl+B hint now. */
 export function showsBackgroundHint(record: SubagentRecord): boolean {
   return (
     !record.background &&
