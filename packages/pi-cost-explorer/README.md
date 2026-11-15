@@ -26,6 +26,8 @@ Run `/cost` in Pi's terminal interface. The dialog has five tabs:
 
 The totals use the same sources as Pi's `/session` command: model responses, usage that tools report for their own model calls, background usage such as cache warming, and compaction and branch summaries.
 
+If you use `@luxass/pi-subagents`, the totals also include what its agents cost, as the source "Agents". Each agent run is one row, with its own model. Pi's `/session` command and the cost in Pi's footer do not include agents, so the total here is higher than theirs by that amount. The Overview says how much went to agents.
+
 A Pi session branches when you go back to an earlier message and continue from there. These session branches are not Git branches. By default the dialog covers every session branch, and rows from other branches are dimmed. Press `b` to show only the current branch. While the dialog is open, it refreshes after each turn.
 
 | Controls                     | Action                                                   |

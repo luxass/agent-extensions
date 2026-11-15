@@ -480,7 +480,10 @@ function overviewScreen({ analysis, theme, width, onlyCurrentBranch }: ScreenCon
   }
 
   const warning = theme.fg("warning", "!");
+  const agents = analysis.bySource.get("agent");
   const notes = [
+    agents !== undefined &&
+      `${theme.fg("muted", "·")} ${money(agents.cost.total)} went to ${plural(agents.count, "agent run")}. The cost in Pi's footer does not include agents.`,
     analysis.unpriced > 0 &&
       `${warning} ${plural(analysis.unpriced, "usage record")} with tokens but no cost. Pi has no price for that model, so totals are too low.`,
     analysis.failedCount > 0 &&
@@ -754,6 +757,7 @@ function recordLabel(record: UsageRecord): string {
   if (record.source === "assistant") return record.label;
   if (record.source === "tool") return `↳ ${record.label} (tool)`;
   if (record.source === "usage") return `${record.label} · ${record.model ?? "unknown"}`;
+  if (record.source === "agent") return `↳ ${record.label} (agent)`;
   return SOURCE_LABELS[record.source];
 }
 
