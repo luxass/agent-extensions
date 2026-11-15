@@ -27,9 +27,8 @@ import {
   type SubagentDefinition,
 } from "./agents.ts";
 import type { SubagentThinking } from "./api.ts";
+import { findSubagentModel, type SubagentModel } from "./models.ts";
 import type { SubagentSettings } from "./settings.ts";
-
-type SubagentModel = NonNullable<ExtensionContext["model"]>;
 
 const BUILTIN_TOOLS = new Set([
   "read",
@@ -107,31 +106,23 @@ export function inheritedSubagentContext(ctx: ExtensionContext): Message[] {
   return inherited;
 }
 
-/** Finds the one available model a `model` value names, by exact id or a unique fragment (S3). */
-function resolveSubagentModel(ctx: ExtensionContext, requested: string | undefined): SubagentModel {
-  if (!requested) {
-    if (!ctx.model)
-      throw new Error("No model selected: choose a model in Pi before starting an agent.");
-    return ctx.model;
+/** The model an agent runs on: the named one, or the caller's when no model is named (S3). */
+function resolveSubagentModel(
+  ctx: ExtensionContext,
+  requested: string | undefined,
+  settings: SubagentSettings,
+): SubagentModel {
+  if (requested) {
+    return findSubagentModel(
+      ctx.modelRegistry.getAvailable(),
+      requested,
+      settings.preferredProviders,
+    );
   }
-  const available = ctx.modelRegistry.getAvailable();
-  const exact = available.find((model) => `${model.provider}/${model.id}` === requested);
-  if (exact) return exact;
-  const fragment = requested.toLowerCase();
-  const matches = available.filter((model) =>
-    `${model.provider}/${model.id}`.toLowerCase().includes(fragment),
-  );
-  const [only] = matches;
-  if (matches.length === 1 && only) return only;
-  const names = matches
-    .slice(0, 5)
-    .map((model) => `${model.provider}/${model.id}`)
-    .join(", ");
-  throw new Error(
-    matches.length === 0
-      ? `No available model matches "${requested}".`
-      : `Model "${requested}" matches ${matches.length} models (${names}). Use provider/id.`,
-  );
+  if (!ctx.model) {
+    throw new Error("No model selected: choose a model in Pi before starting an agent.");
+  }
+  return ctx.model;
 }
 
 /** Resolves model, thinking, turn limit, and tool access for one start or continuation. */
@@ -189,7 +180,8 @@ export function resolveSubagentPolicy(options: {
   }
   return {
     definition,
-    model: resolveSubagentModel(ctx, definition.model ?? overrides.model),
+    // A model named in the call wins. The file's model is the type's default (S3).
+    model: resolveSubagentModel(ctx, overrides.model ?? definition.model, settings),
     thinking: definition.thinking ?? overrides.thinking ?? ctx.thinkingLevel ?? "off",
     maxTurns: definition.max_turns ?? overrides.max_turns ?? settings.maxTurns,
     tools,

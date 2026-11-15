@@ -15,6 +15,8 @@ export interface SubagentSettings {
   maxTurns: number;
   backgroundByDefault: boolean;
   disabledAgents: string[];
+  /** Providers to choose from, in order, when a model name matches on several providers (S3). */
+  preferredProviders: string[];
   widget: "background" | "all" | "off";
   delivery: { mode: "grouped" | "immediate" };
 }
@@ -24,6 +26,7 @@ const DEFAULT_SUBAGENT_SETTINGS: SubagentSettings = {
   maxTurns: 0,
   backgroundByDefault: true,
   disabledAgents: [],
+  preferredProviders: [],
   widget: "background",
   delivery: { mode: "grouped" },
 };
@@ -37,6 +40,7 @@ const subagentSettingChecks = {
   maxTurns: compile(int({ minimum: 0 })),
   backgroundByDefault: compile(bool()),
   disabledAgents: compile(arr(str())),
+  preferredProviders: compile(arr(str())),
   widget: compile(oneOf(["background", "all", "off"])),
   delivery: anyObject,
 };
@@ -89,6 +93,9 @@ export function readSubagentSettings(
     disabledAgents:
       read("disabledAgents", input.disabledAgents, checks.disabledAgents) ??
       defaults.disabledAgents,
+    preferredProviders:
+      read("preferredProviders", input.preferredProviders, checks.preferredProviders) ??
+      defaults.preferredProviders,
     widget: read("widget", input.widget, checks.widget) ?? defaults.widget,
     delivery: {
       mode: read("delivery.mode", delivery.mode, deliveryModeCheck) ?? defaults.delivery.mode,

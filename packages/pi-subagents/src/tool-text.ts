@@ -18,10 +18,13 @@ export function subagentToolResult(
   return { content: [{ type: "text", text }], details };
 }
 
-/** One line for the model: task name, type, status, and whether the turn limit cut it short. */
+/**
+ * One line for the model: task name, type, the model it runs on, status, and whether the turn
+ * limit cut it short. The model is named so a requested model can be checked against the real one.
+ */
 export function subagentStatusLine(record: SubagentRecord): string {
   const partial = record.partial ? " (partial: turn limit reached)" : "";
-  return `${record.name} (${record.agentType}) is ${record.status}${partial}.`;
+  return `${record.name} (${record.agentType}, ${record.model}) is ${record.status}${partial}.`;
 }
 
 /** The status line followed by the agent's answer, or its error when it has none. */

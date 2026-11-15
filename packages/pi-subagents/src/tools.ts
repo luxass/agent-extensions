@@ -39,7 +39,10 @@ const agentParameters = Type.Object({
     }),
   ),
   model: Type.Optional(
-    Type.String({ description: "provider/id, or part of one that matches exactly one model." }),
+    Type.String({
+      description:
+        "Model for this agent: provider/id, or a name such as \"opus 5.5\". Set it only when the user asks for a model. It replaces the agent type's own model. Leave it out to use the type's model, or yours when the type has none.",
+    }),
   ),
   thinking: Type.Optional(StringEnum(thinkingLevels, { description: "Thinking level." })),
   max_turns: Type.Optional(
@@ -124,7 +127,7 @@ export function registerAgentTool(
         const where =
           record.status === "queued" ? "queued for the background" : "running in the background";
         return subagentToolResult(
-          `${startedOver}Started ${record.name} (${record.agentType}), ${where}. Its result arrives by itself. Do not poll it or repeat its work. Continue with other work, or tell the user what you started and end your turn.`,
+          `${startedOver}Started ${record.name} (${record.agentType}) on ${record.model}, ${where}. Its result arrives by itself. Do not poll it or repeat its work. Continue with other work, or tell the user what you started and end your turn.`,
           details,
         );
       }

@@ -49,7 +49,9 @@ skills: [review-checklist]
 Review the changes you are asked about and report concrete problems with file paths.
 ```
 
-Only `description` is required. `name` defaults to the file name. `model` is `provider/id`, or a part of it that matches exactly one available model. `skills` adds the full text of those skills to the prompt. Values in the file win over the same values in an `Agent` call. A file with any other field is skipped with a warning.
+Only `description` is required. `name` defaults to the file name. `model` is `provider/id`, or a name such as `opus 5.5`. `skills` adds the full text of those skills to the prompt. The file's `thinking` and `max_turns` win over the same values in an `Agent` call. The file's `model` is the type's default, and a model you ask for wins over it. A file with any other field is skipped with a warning.
+
+A model name ignores case, spaces, dots, and hyphens, so `opus 5.5` finds `claude-opus-5-5`. If a name fits models on several providers, the agent does not start, and the error lists the choices. Use `provider/id`, or set `preferredProviders`. The tool result names the model each agent runs on.
 
 Extension tools, such as `codemode`, load their extension only in that agent. A `mcp__server__*` pattern loads Pi's MCP support and codemode, and connects every server in `mcp.json`. Agents cannot start, steer, or stop other agents, and they have no UI, so a tool that asks you a question fails inside an agent.
 
@@ -63,6 +65,7 @@ Set these under `subagents` in Pi's `settings.json`. Project settings apply only
 | `maxTurns`            | `0`            | Turn limit when the file and the call set none. `0` means no limit.                                                               |
 | `backgroundByDefault` | `true`         | Whether `Agent` calls run in the background unless they say otherwise.                                                            |
 | `disabledAgents`      | `[]`           | Agent types that cannot start or continue.                                                                                        |
+| `preferredProviders`  | `[]`           | Providers to choose from, in order, when a model name fits models on several providers.                                           |
 | `widget`              | `"background"` | Agents shown above the editor: `"background"`, `"all"`, or `"off"`.                                                               |
 | `delivery.mode`       | `"grouped"`    | `"grouped"` reports agents of one request together, after at most 60 seconds. `"immediate"` reports each result when it is ready. |
 
