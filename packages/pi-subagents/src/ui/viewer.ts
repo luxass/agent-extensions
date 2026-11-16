@@ -5,20 +5,31 @@ import {
   visibleWidth,
   type Component,
   type TuiMouseEvent,
+  type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
 
 import type { SubagentManager } from "../manager.ts";
 import { SubagentList } from "./agent-list.ts";
+import { renderAgentPanel, type AgentPanelLayout } from "./agent-panel.ts";
+import { SubagentPreview } from "./agent-preview.ts";
 import { cleanSubagentText, subagentStatusLabel } from "./agent-status.ts";
 import { SubagentConversation } from "./conversation.ts";
 
-const LIST_WIDTH = 34;
-/** Lines around the body: top border, header, separator, footer separator, footer, bottom border. */
-const FRAME_LINES = 6;
+/** Reading view lines around the conversation: top border, header, two separators, footer, bottom border. */
+const READING_FRAME_LINES = 6;
+
+/** The raw input a clicked hint stands for. */
+const HINT_INPUT: Record<string, string> = {
+  enter: "\r",
+  escape: "\x1b",
+  tab: "\t",
+  end: "\x1b[F",
+};
 
 /**
- * `/agents`: the agent list beside the selected conversation, or the conversation alone in the
- * reading view. It only reads and stops agents. There is no message input.
+ * `/agents`. The first view is a panel with the agent list, its filter tabs, and the selected
+ * agent's answer. Enter opens the reading view: the agent's whole conversation. The viewer only
+ * reads and stops agents. There is no message input.
  */
 export async function openSubagentViewer(
   ctx: ExtensionCommandContext,
@@ -28,20 +39,17 @@ export async function openSubagentViewer(
   await ctx.ui.custom<void>(
     (tui, theme, keybindings, done) => {
       const list = new SubagentList(theme, manager);
+      const preview = new SubagentPreview(manager);
       const conversation = new SubagentConversation(tui, theme, manager, ctx.cwd);
+      const redraw = () => tui.requestRender();
       let reading = false;
-      let focus: "list" | "conversation" = "list";
+      let previewFocused = false;
       let dragOffset: number | undefined;
-      // Where the last render drew each pane, for mouse events.
-      let layout = {
-        bodyTop: 0,
-        bodyHeight: 0,
-        listWidth: 0,
-        conversationLeft: 0,
-        conversationWidth: 0,
-      };
+      // Where the last render drew things, for mouse events.
+      let panelLayout: AgentPanelLayout | undefined;
+      let readingLayout = { bodyTop: 0, bodyHeight: 0, conversationWidth: 0 };
 
-      const unsubscribe = manager.subscribe(() => tui.requestRender());
+      const unsubscribe = manager.subscribe(redraw);
       const border = (text: string) => theme.fg("borderAccent", text);
 
       const edge = (left: string, right: string, label: string, width: number) => {
@@ -57,189 +65,208 @@ export async function openSubagentViewer(
         return `${border("│")}${fitted}${" ".repeat(Math.max(0, inner - visibleWidth(fitted)))}${border("│")}`;
       };
 
-      const footer = () => {
-        const record = list.awaitingStop();
-        if (record) {
-          return theme.fg(
-            "warning",
-            ` Press x again to stop ${record.name}. Any other key cancels.`,
-          );
-        }
+      const renderReading = (width: number): string[] => {
+        const inner = Math.max(10, width - 2);
+        const height = Math.max(
+          READING_FRAME_LINES + 3,
+          fullscreen ? tui.terminal.rows : Math.floor(tui.terminal.rows * 0.85),
+        );
+        const bodyHeight = height - READING_FRAME_LINES;
+        const record = list.selected();
+        conversation.sync(record);
+        readingLayout = { bodyTop: 3, bodyHeight, conversationWidth: inner };
+
+        const title = record ? ` ${record.name} · ${record.agentType} ` : " Agents ";
+        const header = record
+          ? ` ${theme.bold(record.name)} ${theme.fg("muted", "·")} ${record.model || "model pending"} ${theme.fg("muted", "·")} thinking ${record.thinking} ${theme.fg("muted", "·")} ${subagentStatusLabel(record)}${record.error ? ` ${theme.fg("error", cleanSubagentText(record.error).split("\n")[0] ?? "")}` : ""}`
+          : theme.fg("dim", " No agent selected.");
         const expand = keybindings.getKeys("app.tools.expand")[0] ?? "ctrl+o";
-        const parts =
-          reading || focus === "conversation"
-            ? [
-                "↑↓ scroll",
-                "t/T tool",
-                "enter expand",
-                `${expand} all tools`,
-                ...(reading ? [] : ["tab list"]),
-                fullscreen ? "f floating" : "f fullscreen",
-                reading ? "esc back" : "esc close",
-              ]
-            : [
-                "↑↓ select",
-                "enter read",
-                "tab conversation",
-                "x stop",
-                fullscreen ? "f floating" : "f fullscreen",
-                "esc close",
-              ];
-        return theme.fg("dim", ` ${parts.join(" · ")}`);
+        const hints = [
+          "↑↓ scroll",
+          "t/T tool",
+          "enter expand",
+          `${expand} all tools`,
+          fullscreen ? "f floating" : "f fullscreen",
+          "esc back",
+        ];
+        return [
+          edge("┌", "┐", theme.fg("accent", title), width),
+          row(header, inner),
+          border(`├${"─".repeat(inner)}┤`),
+          ...conversation.render(inner, bodyHeight).map((line) => row(line, inner)),
+          border(`├${"─".repeat(inner)}┤`),
+          row(theme.fg("dim", ` ${hints.join(" · ")}`), inner),
+          border(`└${"─".repeat(inner)}┘`),
+        ];
+      };
+
+      const openReading = () => {
+        if (!list.selected()) return;
+        reading = true;
+        // The conversation takes the whole terminal, and Esc gives the panel its size back.
+        fullscreen = true;
+      };
+
+      const handleReadingInput = (data: string) => {
+        if (keybindings.matches(data, "tui.select.cancel")) {
+          reading = false;
+          fullscreen = false;
+          previewFocused = false;
+        } else if (data === "f") fullscreen = !fullscreen;
+        else if (keybindings.matches(data, "app.tools.expand")) conversation.toggleAllTools();
+        else if (keybindings.matches(data, "tui.select.pageUp"))
+          conversation.scrollBy(-conversation.page);
+        else if (keybindings.matches(data, "tui.select.pageDown"))
+          conversation.scrollBy(conversation.page);
+        else if (matchesKey(data, "home")) conversation.scrollTo(0);
+        else if (matchesKey(data, "end")) conversation.follow();
+        else if (data === "t") conversation.selectTool(1);
+        else if (data === "T" || matchesKey(data, "shift+t")) conversation.selectTool(-1);
+        else if (keybindings.matches(data, "tui.select.confirm")) conversation.toggleSelectedTool();
+        else if (keybindings.matches(data, "tui.select.up")) conversation.scrollBy(-1);
+        else if (keybindings.matches(data, "tui.select.down")) conversation.scrollBy(1);
+      };
+
+      /** Scrolls the answer and stops following new output. */
+      const scrollPreview = (lines: number) => {
+        preview.scroll.scrollTo(preview.scroll.scrollTop + lines, { disableFollow: true });
+      };
+
+      const handlePanelInput = (data: string) => {
+        if (list.stopTarget()) {
+          const yes = data === "y" || keybindings.matches(data, "tui.select.confirm");
+          const no = data === "n" || keybindings.matches(data, "tui.select.cancel");
+          if (yes || no) void list.confirmStop(yes).then(redraw);
+          return;
+        }
+        const page = Math.max(1, preview.scroll.viewportHeight - 2);
+        if (keybindings.matches(data, "tui.select.cancel")) done();
+        else if (data === "f") fullscreen = !fullscreen;
+        else if (matchesKey(data, "tab")) previewFocused = !previewFocused;
+        else if (data === "1") list.setFilter("all");
+        else if (data === "2") list.setFilter("active");
+        else if (data === "3") list.setFilter("finished");
+        else if (keybindings.matches(data, "tui.select.confirm")) openReading();
+        else if (data === "x") list.askStop();
+        else if (keybindings.matches(data, "tui.select.up")) {
+          if (previewFocused) scrollPreview(-1);
+          else list.move(-1);
+        } else if (keybindings.matches(data, "tui.select.down")) {
+          if (previewFocused) scrollPreview(1);
+          else list.move(1);
+        } else if (keybindings.matches(data, "tui.select.pageUp")) scrollPreview(-page);
+        else if (keybindings.matches(data, "tui.select.pageDown")) scrollPreview(page);
+        else if (matchesKey(data, "end")) preview.scroll.scrollToEnd();
+        else if (matchesKey(data, "home")) preview.scroll.scrollToStart();
+      };
+
+      const handleInput = (data: string) => {
+        if (reading) handleReadingInput(data);
+        else handlePanelInput(data);
+        redraw();
+      };
+
+      /** A click on a hint acts like its key. */
+      const press = (key: string) => handleInput(HINT_INPUT[key] ?? key);
+
+      // Pi routes mouse events only in fullscreen terminal mode. Every action also has a key.
+      const handlePanelMouse = (event: TuiMouseEvent): TuiMouseEventResult => {
+        const layout = panelLayout;
+        if (!layout) return { handled: true, render: false };
+        const overList =
+          event.y >= layout.bodyY &&
+          event.y < layout.bodyY + layout.listHeight &&
+          (!layout.wide || event.x < layout.contentX + layout.listWidth);
+        if (event.type === "wheel") {
+          if (!list.stopTarget()) {
+            if (overList) list.move(Math.sign(event.wheelDelta ?? 0));
+            else scrollPreview(event.wheelDelta ?? 0);
+          }
+          return { handled: true, render: true };
+        }
+        // The panel takes every mouse event over it, so none reaches the chat behind.
+        if (event.type !== "click" || event.button !== "left") {
+          return { handled: true, render: false };
+        }
+        const hitAt = <Hit extends { start: number; end: number }>(hits: Hit[]) =>
+          hits.find((hit) => event.x >= hit.start && event.x < hit.end);
+
+        if (event.y === layout.footerY) {
+          const hint = hitAt(layout.actionHits);
+          if (hint) press(hint.key);
+        } else if (!list.stopTarget()) {
+          if (event.y === layout.headerY && event.x >= layout.expandX) press("f");
+          else if (event.y === layout.filterY) {
+            const view = hitAt(layout.navHits);
+            const tab = hitAt(layout.filterHits);
+            if (view) press(view.key);
+            else if (tab) list.setFilter(tab.filter);
+          } else if (overList) {
+            const id = list.idAtLine(event.y - layout.bodyY);
+            if (id) {
+              list.select(id);
+              previewFocused = false;
+              if ((event.clickCount ?? 1) > 1) press("enter");
+            }
+          } else previewFocused = true;
+        }
+        return { handled: true, render: true };
+      };
+
+      const handleReadingMouse = (event: TuiMouseEvent): TuiMouseEventResult | undefined => {
+        const line = event.y - readingLayout.bodyTop;
+        const inBody = line >= 0 && line < readingLayout.bodyHeight;
+        const inConversation = event.x >= 1 && event.x <= readingLayout.conversationWidth;
+        const onScrollbar = event.x === readingLayout.conversationWidth;
+
+        if (dragOffset !== undefined) {
+          if (event.type === "drag") {
+            conversation.dragTo(line, dragOffset);
+            return { handled: true };
+          }
+          if (event.type === "release") {
+            dragOffset = undefined;
+            return { handled: true, render: false };
+          }
+        }
+        if (event.type === "wheel") {
+          // The viewer takes every wheel event over it. An unhandled one scrolls the chat behind.
+          if (inBody && inConversation) conversation.scrollBy(event.wheelDelta ?? 0);
+          return { handled: true };
+        }
+        if (event.type !== "press" || event.button !== "left" || !inBody) return undefined;
+        if (onScrollbar && conversation.lineCount > conversation.page) {
+          const onThumb =
+            line >= conversation.thumbTop &&
+            line < conversation.thumbTop + conversation.thumbHeight;
+          dragOffset = onThumb
+            ? line - conversation.thumbTop
+            : Math.floor(conversation.thumbHeight / 2);
+          if (!onThumb) conversation.dragTo(line, dragOffset);
+          return { handled: true, capture: true };
+        }
+        if (inConversation && conversation.toggleToolAtLine(line)) return { handled: true };
+        return undefined;
       };
 
       const component: Component & { dispose(): void } = {
         render(width) {
-          const inner = Math.max(10, width - 2);
-          const height = Math.max(
-            FRAME_LINES + 3,
-            fullscreen ? tui.terminal.rows : Math.floor(tui.terminal.rows * 0.85),
+          if (reading) return renderReading(width);
+          const panel = renderAgentPanel(
+            { theme, tui, list, preview, fullscreen, previewFocused, redraw },
+            width,
           );
-          const bodyHeight = height - FRAME_LINES;
-          const record = list.selected();
-          conversation.sync(record);
-
-          const title = reading && record ? ` ${record.name} · ${record.agentType} ` : " Agents ";
-          const header = record
-            ? ` ${theme.bold(record.name)} ${theme.fg("muted", "·")} ${record.model || "model pending"} ${theme.fg("muted", "·")} thinking ${record.thinking} ${theme.fg("muted", "·")} ${subagentStatusLabel(record)}${record.error ? ` ${theme.fg("error", cleanSubagentText(record.error).split("\n")[0] ?? "")}` : ""}`
-            : theme.fg("dim", " No agent selected.");
-
-          const lines = [edge("┌", "┐", theme.fg("accent", title), width), row(header, inner)];
-          if (reading) {
-            layout = {
-              bodyTop: 3,
-              bodyHeight,
-              listWidth: 0,
-              conversationLeft: 1,
-              conversationWidth: inner,
-            };
-            lines.push(border(`├${"─".repeat(inner)}┤`));
-            for (const line of conversation.render(inner, bodyHeight)) lines.push(row(line, inner));
-          } else {
-            const listWidth = Math.min(LIST_WIDTH, Math.floor(inner * 0.4));
-            const conversationWidth = inner - listWidth - 1;
-            layout = {
-              bodyTop: 3,
-              bodyHeight,
-              listWidth,
-              conversationLeft: listWidth + 2,
-              conversationWidth,
-            };
-            lines.push(border(`├${"─".repeat(listWidth)}┬${"─".repeat(conversationWidth)}┤`));
-            const left = list.render(listWidth, bodyHeight, focus === "list");
-            const right = conversation.render(conversationWidth, bodyHeight);
-            for (let index = 0; index < bodyHeight; index++) {
-              const conversationLine = truncateToWidth(right[index] ?? "", conversationWidth, "");
-              const padding = " ".repeat(
-                Math.max(0, conversationWidth - visibleWidth(conversationLine)),
-              );
-              lines.push(
-                `${border("│")}${left[index] ?? ""}${border("│")}${conversationLine}${padding}${border("│")}`,
-              );
-            }
-            lines.push(border(`├${"─".repeat(listWidth)}┴${"─".repeat(conversationWidth)}┤`));
-            lines.push(row(footer(), inner));
-            lines.push(border(`└${"─".repeat(inner)}┘`));
-            return lines;
-          }
-          lines.push(border(`├${"─".repeat(inner)}┤`));
-          lines.push(row(footer(), inner));
-          lines.push(border(`└${"─".repeat(inner)}┘`));
-          return lines;
+          panelLayout = panel.layout;
+          return panel.lines;
         },
-
-        handleInput(data) {
-          const confirming = list.awaitingStop() !== undefined;
-          if (confirming && data !== "x") list.confirmStopId = undefined;
-
-          if (keybindings.matches(data, "tui.select.cancel")) {
-            if (confirming) {
-              // Esc only cancels the pending stop.
-            } else if (reading) reading = false;
-            else done();
-          } else if (data === "f") {
-            fullscreen = !fullscreen;
-          } else if (keybindings.matches(data, "app.tools.expand")) {
-            conversation.toggleAllTools();
-          } else if (keybindings.matches(data, "tui.select.pageUp")) {
-            // These four keys scroll the conversation from either pane. The list only takes
-            // Up and Down, so End can follow new output again without changing focus.
-            conversation.scrollBy(-conversation.page);
-          } else if (keybindings.matches(data, "tui.select.pageDown")) {
-            conversation.scrollBy(conversation.page);
-          } else if (matchesKey(data, "home")) {
-            conversation.scrollTo(0);
-          } else if (matchesKey(data, "end")) {
-            conversation.follow();
-          } else if (!reading && matchesKey(data, "tab")) {
-            focus = focus === "list" ? "conversation" : "list";
-          } else if (!reading && focus === "list") {
-            if (keybindings.matches(data, "tui.select.up")) list.move(-1);
-            else if (keybindings.matches(data, "tui.select.down")) list.move(1);
-            else if (keybindings.matches(data, "tui.select.confirm") && list.selected())
-              reading = true;
-            else if (data === "x") void list.pressStop().then(() => tui.requestRender());
-          } else if (data === "t") conversation.selectTool(1);
-          else if (data === "T" || matchesKey(data, "shift+t")) conversation.selectTool(-1);
-          else if (keybindings.matches(data, "tui.select.confirm"))
-            conversation.toggleSelectedTool();
-          else if (keybindings.matches(data, "tui.select.up")) conversation.scrollBy(-1);
-          else if (keybindings.matches(data, "tui.select.down")) conversation.scrollBy(1);
-          tui.requestRender();
-        },
-
-        // Pi routes mouse events only in fullscreen terminal mode. Every action also has a key.
+        handleInput,
         handleMouse(event: TuiMouseEvent) {
-          const line = event.y - layout.bodyTop;
-          const inBody = line >= 0 && line < layout.bodyHeight;
-          const inConversation =
-            event.x >= layout.conversationLeft &&
-            event.x < layout.conversationLeft + layout.conversationWidth;
-          const onScrollbar = event.x === layout.conversationLeft + layout.conversationWidth - 1;
-
-          if (dragOffset !== undefined) {
-            if (event.type === "drag") {
-              conversation.dragTo(line, dragOffset);
-              return { handled: true };
-            }
-            if (event.type === "release") {
-              dragOffset = undefined;
-              return { handled: true, render: false };
-            }
-          }
-          if (event.type === "wheel") {
-            // The viewer takes every wheel event over it. An unhandled one scrolls the chat behind.
-            const overList = !reading && inBody && event.x >= 1 && event.x <= layout.listWidth;
-            if (overList) list.move(Math.sign(event.wheelDelta ?? 0));
-            else if (inBody && inConversation) conversation.scrollBy(event.wheelDelta ?? 0);
-            return { handled: true };
-          }
-          if (event.type !== "press" || event.button !== "left" || !inBody) return undefined;
-          if (!reading && event.x >= 1 && event.x <= layout.listWidth) {
-            const id = list.idAtLine(line);
-            if (!id) return undefined;
-            list.select(id);
-            focus = "list";
-            return { handled: true };
-          }
-          if (onScrollbar && conversation.lineCount > conversation.page) {
-            const onThumb =
-              line >= conversation.thumbTop &&
-              line < conversation.thumbTop + conversation.thumbHeight;
-            dragOffset = onThumb
-              ? line - conversation.thumbTop
-              : Math.floor(conversation.thumbHeight / 2);
-            if (!onThumb) conversation.dragTo(line, dragOffset);
-            return { handled: true, capture: true };
-          }
-          if (inConversation && conversation.toggleToolAtLine(line)) return { handled: true };
-          return undefined;
+          return reading ? handleReadingMouse(event) : handlePanelMouse(event);
         },
-
         invalidate() {
+          preview.invalidate();
           conversation.invalidate();
         },
-
         dispose() {
           unsubscribe();
         },
@@ -254,7 +281,7 @@ export async function openSubagentViewer(
         anchor: "center",
         maxHeight: "100%",
         get width() {
-          return fullscreen ? "100%" : "90%";
+          return fullscreen ? "100%" : 128;
         },
         get margin() {
           return fullscreen ? 0 : 1;

@@ -23,7 +23,23 @@ To give an agent a correction, or to continue a finished agent, ask the main mod
 | `/agents` | Show every agent of the session beside the selected agent's conversation.    |
 | Ctrl+B    | While a foreground agent runs, move all foreground agents to the background. |
 
-In `/agents`, Up and Down select an agent, and Enter opens the conversation alone. Tab switches between the list and the conversation. Page Up, Page Down, Home, and End scroll the conversation from either one. Press `x` twice to stop the selected agent. Press `f` to switch between a floating and a fullscreen view. Esc goes back one step and then closes the view. Pi's tool expansion key opens and closes all tool calls. With the conversation focused, `t` and `T` move to the next and previous tool call, and Enter opens or closes that one. In Pi's fullscreen terminal mode, you can also scroll with the mouse wheel and click agents and tool calls.
+Run `/agents` to open a panel with every agent of the session. Each agent has two lines: its task, then its name, type, status, and elapsed time. Unfinished agents come first, and the newest first in each group. Under the list is the selected agent's answer, or its latest output while it works. From 104 columns, the list and the answer are side by side.
+
+| Key                 | Action                                                       |
+| ------------------- | ------------------------------------------------------------ |
+| Up / Down           | Select an agent, or scroll the answer when it has the focus. |
+| Tab                 | Move the focus between the list and the answer.              |
+| `1` / `2` / `3`     | Show all, active, or finished agents.                        |
+| Enter               | Open the agent's whole conversation.                         |
+| `x`, then `y`       | Stop the selected agent. `n` or Esc keeps it running.        |
+| `f`                 | Switch between the floating panel and fullscreen.            |
+| Page Up / Page Down | Scroll the answer without following new output.              |
+| End / Home          | Follow new output again, or go to the start of the answer.   |
+| Esc                 | Close the panel.                                             |
+
+The conversation view shows tool calls the way Pi does, collapsed at first. Up, Down, Page Up, Page Down, Home, and End scroll it. Pi's tool expansion key opens and closes all tool calls. `t` and `T` move to the next and previous tool call, and Enter opens or closes that one. `f` switches fullscreen, and Esc goes back to the panel.
+
+In Pi's fullscreen terminal mode you can also use the mouse: click an agent, a filter tab, or a key hint in the footer, double-click an agent to open it, and scroll with the wheel.
 
 ## Agent types
 

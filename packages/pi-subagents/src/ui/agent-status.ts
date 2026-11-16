@@ -55,14 +55,45 @@ const STATUS_MARKS = {
   interrupted: ["warning", "!"],
 } as const;
 
+/** The color of an agent's status mark and status word. */
+function subagentStatusColor(record: SubagentRecord) {
+  if (record.status === "running") return "accent" as const;
+  // A partial answer is still an answer, but it stopped at the turn limit.
+  return record.partial ? ("warning" as const) : STATUS_MARKS[record.status][0];
+}
+
 /** The one status mark the widget, cards, and `/agents` share. */
 export function subagentStatusMark(record: SubagentRecord, theme: Theme): string {
   if (record.status === "running") {
     return theme.fg("accent", SPINNER[Math.floor(Date.now() / 80) % SPINNER.length] ?? "⠋");
   }
-  const [color, mark] = STATUS_MARKS[record.status];
-  // A partial answer is still an answer, but it stopped at the turn limit.
-  return theme.fg(record.partial ? "warning" : color, mark);
+  return theme.fg(subagentStatusColor(record), STATUS_MARKS[record.status][1]);
+}
+
+const STATUS_WORDS = {
+  queued: "Queued",
+  running: "Running",
+  stopping: "Stopping",
+  completed: "Done",
+  stopped: "Stopped",
+  failed: "Failed",
+  interrupted: "Interrupted",
+} as const;
+
+/** Width of the longest status badge, "! Interrupted", so badges line up in a column. */
+export const SUBAGENT_BADGE_WIDTH = 13;
+
+/** Status mark and status word in the status color, such as "✓ Done", for the `/agents` list. */
+export function subagentBadge(record: SubagentRecord, theme: Theme): string {
+  const word =
+    record.partial && record.status === "completed" ? "Partial" : STATUS_WORDS[record.status];
+  return `${subagentStatusMark(record, theme)} ${theme.fg(subagentStatusColor(record), word)}`;
+}
+
+/** The agent's task on one line: the first line of its prompt, cleaned for display. */
+export function subagentTaskTitle(record: SubagentRecord): string {
+  const title = cleanSubagentText(record.task).replace(/\s+/g, " ").trim().slice(0, 160);
+  return title || record.name;
 }
 
 function formatTokens(tokens: number): string {
