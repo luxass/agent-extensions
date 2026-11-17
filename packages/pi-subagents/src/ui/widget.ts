@@ -1,19 +1,15 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 
 import type { SubagentManager } from "../manager.ts";
-import {
-  showsBackgroundHint,
-  subagentActivity,
-  subagentCounters,
-  subagentStatusMark,
-} from "./agent-status.ts";
+import { showsBackgroundHint, subagentStatusMark } from "./agent-status.ts";
 
 const ANIMATION_INTERVAL_MS = 120;
 
 /**
- * Shows running and queued agents above the editor. The widget is always installed, so its
- * timer also animates `Agent` cards when `widget` is "off".
+ * Shows one quiet line above the editor while agents work, such as "Agents · 3 running". What
+ * each agent is doing is in its `Agent` card and in `/agents`. The widget is always installed,
+ * so its timer also animates the cards when `widget` is "off".
  */
 export function installSubagentWidget(ctx: ExtensionContext, manager: SubagentManager): void {
   ctx.ui.setWidget("subagents", (tui, theme) => {
@@ -25,7 +21,7 @@ export function installSubagentWidget(ctx: ExtensionContext, manager: SubagentMa
       render(width) {
         const mode = manager.settings.widget;
         if (mode === "off") return [];
-        const rows = manager
+        const working = manager
           .list()
           .filter(
             (record) =>
@@ -34,29 +30,24 @@ export function installSubagentWidget(ctx: ExtensionContext, manager: SubagentMa
               record.status === "stopping",
           )
           .filter((record) => mode === "all" || record.background);
-        if (!rows.length) return [];
-        return rows.map((record) => {
-          const hint = showsBackgroundHint(record)
-            ? theme.fg("dim", "  (ctrl+b to run in background)")
-            : "";
-          const name = `${subagentStatusMark(record, theme)} ${theme.bold(record.name)}`;
-          const type = ` ${theme.fg("dim", record.agentType)}`;
-          const dot = ` ${theme.fg("muted", "·")} `;
-          const counters = ` · ${subagentCounters(record)}`;
-          // The name and the counters come first. The activity gets the room they leave, and the
-          // agent type is shown only when the whole activity still fits beside it.
-          const room =
-            width -
-            visibleWidth(name) -
-            visibleWidth(dot) -
-            visibleWidth(counters) -
-            visibleWidth(hint);
-          const withType =
-            room - visibleWidth(type) >= visibleWidth(subagentActivity(record, width));
-          const activity = subagentActivity(record, withType ? room - visibleWidth(type) : room);
-          const line = `${name}${withType ? type : ""}${dot}${activity}${theme.fg("dim", counters)}${hint}`;
-          return truncateToWidth(line, width, "…");
-        });
+        if (!working.length) return [];
+
+        const queued = working.filter((record) => record.status === "queued").length;
+        // An agent that is stopping still runs until its session has closed.
+        const running = working.length - queued;
+        const counts = [
+          ...(running ? [`${running} running`] : []),
+          ...(queued ? [`${queued} queued`] : []),
+        ].join(" · ");
+        // The spinner while any agent runs, the queued mark when all of them wait.
+        const lead = working.find((record) => record.status !== "queued") ?? working[0];
+        const mark = lead ? subagentStatusMark(lead, theme) : "";
+        const hint = working.some((record) => showsBackgroundHint(record))
+          ? theme.fg("dim", "  (ctrl+b to run in background)")
+          : "";
+        // One column in, like the chat text above it.
+        const line = ` ${mark} Agents ${theme.fg("dim", `· ${counts}`)}${hint}`;
+        return [truncateToWidth(line, width, "…")];
       },
       invalidate() {},
       dispose() {
