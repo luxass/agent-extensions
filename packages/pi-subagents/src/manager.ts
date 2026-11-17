@@ -14,15 +14,14 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { isSubagentName, type SubagentDefinition } from "./agents.ts";
-import { subagentMessageText } from "./message-text.ts";
 import {
   addSubagentUsage,
   emptySubagentUsage,
   hasSubagentUsage,
-  savedSubagentCost,
   SUBAGENT_USAGE_ENTRY,
   type SubagentRunUsage,
 } from "./costs.ts";
+import { subagentMessageText } from "./message-text.ts";
 import {
   createSubagentRuntime,
   createSubagentSession,
@@ -229,7 +228,7 @@ export class SubagentManager {
   restore(): void {
     for (const entry of this.ctx.sessionManager.getEntries()) {
       if (entry.type === "custom" && entry.customType === SUBAGENT_USAGE_ENTRY) {
-        this.savedCost += savedSubagentCost(entry.data);
+        this.savedCost += (entry.data as SubagentRunUsage).usage.cost.total;
         this.savedRuns++;
       }
       if (entry.type !== "custom" || entry.customType !== SUBAGENT_RECORD_ENTRY) continue;

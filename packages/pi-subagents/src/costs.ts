@@ -50,13 +50,3 @@ export function addSubagentUsage(total: Usage, usage: Usage): void {
   total.cost.cacheWrite += usage.cost.cacheWrite;
   total.cost.total += usage.cost.total;
 }
-
-/** The cost total of a saved `subagents-usage` entry, or 0 when the entry is not one. */
-export function savedSubagentCost(data: unknown): number {
-  if (typeof data !== "object" || data === null || !("usage" in data)) return 0;
-  const { usage } = data;
-  if (typeof usage !== "object" || usage === null || !("cost" in usage)) return 0;
-  const { cost } = usage;
-  if (typeof cost !== "object" || cost === null || !("total" in cost)) return 0;
-  return typeof cost.total === "number" ? cost.total : 0;
-}
