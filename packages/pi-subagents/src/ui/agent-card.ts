@@ -10,6 +10,7 @@ import {
   Spacer,
   Text,
   truncateToWidth,
+  visibleWidth,
   type Component,
 } from "@earendil-works/pi-tui";
 
@@ -19,6 +20,7 @@ import {
   cleanSubagentText,
   firstSubagentLine,
   showsBackgroundHint,
+  subagentActivity,
   subagentCounters,
   subagentStatusLabel,
   subagentStatusMark,
@@ -60,11 +62,10 @@ export class AgentCardBody implements Component {
     const fit = (line: string) => truncateToWidth(line, width, "…");
     const mark = subagentStatusMark(record, theme);
     if (!isSubagentFinished(record.status)) {
-      const lines = [
-        fit(
-          `${mark} ${cleanSubagentText(record.activity)} ${theme.fg("dim", `· ${subagentCounters(record)}`)}`,
-        ),
-      ];
+      const counters = `· ${subagentCounters(record)}`;
+      // Mark, space, activity, space, counters. The activity gets what the counters leave.
+      const activity = subagentActivity(record, width - 3 - visibleWidth(counters));
+      const lines = [fit(`${mark} ${activity} ${theme.fg("dim", counters)}`)];
       if (showsBackgroundHint(record))
         lines.push(fit(theme.fg("dim", "  (ctrl+b to run in background)")));
       return lines;

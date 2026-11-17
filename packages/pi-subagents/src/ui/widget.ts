@@ -1,10 +1,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import type { SubagentManager } from "../manager.ts";
 import {
-  cleanSubagentText,
   showsBackgroundHint,
+  subagentActivity,
   subagentCounters,
   subagentStatusMark,
 } from "./agent-status.ts";
@@ -36,13 +36,25 @@ export function installSubagentWidget(ctx: ExtensionContext, manager: SubagentMa
           .filter((record) => mode === "all" || record.background);
         if (!rows.length) return [];
         return rows.map((record) => {
-          const activity = cleanSubagentText(record.activity);
           const hint = showsBackgroundHint(record)
             ? theme.fg("dim", "  (ctrl+b to run in background)")
             : "";
-          const line =
-            `${subagentStatusMark(record, theme)} ${theme.bold(record.name)} ${theme.fg("dim", record.agentType)}` +
-            ` ${theme.fg("muted", "·")} ${activity} ${theme.fg("dim", `· ${subagentCounters(record)}`)}${hint}`;
+          const name = `${subagentStatusMark(record, theme)} ${theme.bold(record.name)}`;
+          const type = ` ${theme.fg("dim", record.agentType)}`;
+          const dot = ` ${theme.fg("muted", "·")} `;
+          const counters = ` · ${subagentCounters(record)}`;
+          // The name and the counters come first. The activity gets the room they leave, and the
+          // agent type is shown only when the whole activity still fits beside it.
+          const room =
+            width -
+            visibleWidth(name) -
+            visibleWidth(dot) -
+            visibleWidth(counters) -
+            visibleWidth(hint);
+          const withType =
+            room - visibleWidth(type) >= visibleWidth(subagentActivity(record, width));
+          const activity = subagentActivity(record, withType ? room - visibleWidth(type) : room);
+          const line = `${name}${withType ? type : ""}${dot}${activity}${theme.fg("dim", counters)}${hint}`;
           return truncateToWidth(line, width, "…");
         });
       },

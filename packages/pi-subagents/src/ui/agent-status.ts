@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 
 import type { SubagentRecord } from "../manager.ts";
+import { cutPlainText } from "./text-layout.ts";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -116,6 +117,15 @@ export function subagentElapsed(record: SubagentRecord): string {
   );
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+/**
+ * What a working agent is doing, such as "bash sleep 100", cut to `room` columns. Callers give it
+ * the room that is left after the counters, so a long command cannot push the counters off the
+ * line. It keeps at least 16 columns, enough to name the tool and the start of its input.
+ */
+export function subagentActivity(record: SubagentRecord, room: number): string {
+  return cutPlainText(cleanSubagentText(record.activity), Math.max(16, room));
 }
 
 /** Turns, tool uses, tokens with context percentage, and elapsed time, joined with dots. */
