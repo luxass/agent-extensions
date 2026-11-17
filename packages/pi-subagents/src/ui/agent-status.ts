@@ -90,6 +90,11 @@ export function subagentBadge(record: SubagentRecord, theme: Theme): string {
   return `${subagentStatusMark(record, theme)} ${theme.fg(subagentStatusColor(record), word)}`;
 }
 
+/** The model and thinking level an agent runs on, such as "openai/gpt-6.1-sol · thinking medium". */
+export function subagentModelLabel(record: SubagentRecord): string {
+  return `${record.model || "model pending"} · thinking ${record.thinking}`;
+}
+
 /** The agent's task on one line: the first line of its prompt, cleaned for display. */
 export function subagentTaskTitle(record: SubagentRecord): string {
   const title = cleanSubagentText(record.task).replace(/\s+/g, " ").trim().slice(0, 160);

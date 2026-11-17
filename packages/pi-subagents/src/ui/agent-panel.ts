@@ -4,7 +4,12 @@ import { truncateToWidth, visibleWidth, type TUI } from "@earendil-works/pi-tui"
 import type { SubagentRecord } from "../manager.ts";
 import type { SubagentList, SubagentListFilter } from "./agent-list.ts";
 import type { SubagentPreview } from "./agent-preview.ts";
-import { subagentBadge, subagentElapsed, subagentTaskTitle } from "./agent-status.ts";
+import {
+  subagentBadge,
+  subagentElapsed,
+  subagentModelLabel,
+  subagentTaskTitle,
+} from "./agent-status.ts";
 import { fitLine, lineEnds } from "./text-layout.ts";
 
 /** A clickable span of one line. `key` is the key the click stands for. */
@@ -144,12 +149,13 @@ function selectedOutput(
   }
   const paused = !preview.scroll.isFollowingEnd;
   const header = [
-    theme.bold(subagentTaskTitle(record)),
+    fitLine(`${theme.bold(record.name)}${theme.fg("dim", ` · ${record.agentType}`)}`, width),
     lineEnds(
-      `${subagentBadge(record, theme)} · ${theme.fg("muted", `${record.name} · ${record.agentType}`)}`,
+      `${subagentBadge(record, theme)} · ${theme.fg("muted", subagentModelLabel(record))}`,
       theme.fg("dim", `${subagentElapsed(record)}${paused ? " · Paused" : ""}`),
       width,
     ),
+    fitLine(theme.fg("muted", subagentTaskTitle(record)), width),
     "",
   ];
   const remaining = Math.max(1, height - header.length);
@@ -259,21 +265,33 @@ export function renderAgentPanel(
       body.push(`${fitLine(left[index] ?? "", layout.listWidth)} ${divider} ${right[index] ?? ""}`);
     }
   } else {
-    const natural = Math.max(7, rows.length * 2 + 4);
-    bodyHeight = fullscreen ? available : Math.min(available, natural);
-    const previewHeight = Math.min(3, Math.max(1, Math.floor(bodyHeight / 3)));
-    const listBudget = bodyHeight - previewHeight - 1;
-    const overflow = rows.length > Math.floor(listBudget / 2);
-    body = list.render(inner, Math.max(2, listBudget - (overflow ? 1 : 0)), true, previewFocused);
+    // Under the list: a rule, the selected agent's model line, and its answer. The answer gets
+    // at least three lines. The list takes what it needs from the rest.
+    const minimumPreview = 3;
+    const modelLines = record ? 1 : 0;
+    const listRoom = Math.max(2, available - 1 - modelLines - minimumPreview);
+    const overflow = rows.length * 2 > listRoom;
+    const listBudget = overflow ? Math.max(2, listRoom - 1) : Math.max(2, rows.length * 2);
+    body = list.render(inner, listBudget, true, previewFocused);
     if (overflow) {
       const last = Math.min(rows.length, list.start + list.drawnHeight / 2);
       body.push(theme.fg("dim", `${list.start + 1}–${last} of ${rows.length} agents · ↑↓ More`));
     }
     body.push(edge("─".repeat(inner)));
+    if (record) body.push(theme.fg("muted", subagentModelLabel(record)));
+    // The answer is as tall as its text, up to the rows that are left. Fullscreen uses them all.
+    const previewRoom = Math.max(minimumPreview, available - body.length);
+    const previewHeight =
+      fullscreen || !record
+        ? record
+          ? previewRoom
+          : minimumPreview
+        : Math.max(minimumPreview, Math.min(previewRoom, preview.lineCount(record, inner)));
     const answer = record
       ? preview.render(record, inner, previewHeight, state.redraw, true)
       : [theme.fg("muted", "Start a task from the main conversation.")];
     body.push(...answer.slice(0, previewHeight));
+    bodyHeight = fullscreen ? available : Math.min(available, Math.max(7, body.length));
   }
   layout.listHeight = list.drawnHeight;
   while (body.length < bodyHeight) body.push("");
@@ -291,7 +309,7 @@ export function renderAgentPanel(
     line(),
   ];
   if (stopTarget) {
-    lines.push(line(theme.fg("warning", `Stop “${subagentTaskTitle(stopTarget)}”?  y / n`)));
+    lines.push(line(theme.fg("warning", `Stop ${stopTarget.name}?  y / n`)));
   }
   lines.push(rule("├", "┤"));
   layout.footerY = lines.length;

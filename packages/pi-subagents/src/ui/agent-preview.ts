@@ -82,7 +82,35 @@ export class SubagentPreview {
     this.markdown?.invalidate();
   }
 
-  /** Returns at most `height` lines of `width` columns. `compact` is the few-line preview. */
+  /** Lays the agent's newest output out in `width` columns. Returns what kind of output it is. */
+  private layOut(record: SubagentRecord, width: number): "answer" | "tool" | "empty" {
+    const output = subagentOutput(record, this.manager);
+    const text = `${output.kind}\n${output.label ?? ""}\n${output.text}`;
+    if (text !== this.shownText || width !== this.width) {
+      this.shownText = text;
+      this.width = width;
+      if (output.kind === "answer") {
+        this.markdown = new Markdown(cleanSubagentText(output.text), 0, 0, getMarkdownTheme());
+        this.lines = this.markdown.render(width);
+      } else {
+        this.markdown = undefined;
+        const plain = output.label ? `${output.label}\n\n${output.text}` : output.text;
+        this.lines = new Text(cleanSubagentText(plain), 0, 0).render(width);
+      }
+    }
+    return output.kind;
+  }
+
+  /** How many lines the agent's newest output takes in `width` columns, to size the preview. */
+  lineCount(record: SubagentRecord, width: number): number {
+    this.layOut(record, width);
+    return this.lines.length;
+  }
+
+  /**
+   * Returns at most `height` lines of `width` columns. `compact` is the preview under the list,
+   * which starts at the top of a finished answer.
+   */
   render(
     record: SubagentRecord,
     width: number,
@@ -104,22 +132,9 @@ export class SubagentPreview {
       this.scroll.scrollToEnd();
     }
 
-    const output = subagentOutput(record, this.manager);
-    const text = `${output.kind}\n${output.label ?? ""}\n${output.text}`;
-    if (text !== this.shownText || width !== this.width) {
-      this.shownText = text;
-      this.width = width;
-      if (output.kind === "answer") {
-        this.markdown = new Markdown(cleanSubagentText(output.text), 0, 0, getMarkdownTheme());
-        this.lines = this.markdown.render(width);
-      } else {
-        this.markdown = undefined;
-        const plain = output.label ? `${output.label}\n\n${output.text}` : output.text;
-        this.lines = new Text(cleanSubagentText(plain), 0, 0).render(width);
-      }
-    }
+    const kind = this.layOut(record, width);
     this.scroll.updateLayout(this.lines.length, height, redraw);
-    if (startAtAnswer && output.kind === "answer") this.scroll.scrollToStart();
+    if (startAtAnswer && kind === "answer") this.scroll.scrollToStart();
     return this.lines.slice(this.scroll.scrollTop, this.scroll.scrollTop + height);
   }
 }

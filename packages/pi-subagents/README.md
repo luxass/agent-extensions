@@ -23,7 +23,7 @@ To give an agent a correction, or to continue a finished agent, ask the main mod
 | `/agents` | Show every agent of the session beside the selected agent's conversation.    |
 | Ctrl+B    | While a foreground agent runs, move all foreground agents to the background. |
 
-Run `/agents` to open a panel with every agent of the session. Each agent has two lines: its task, then its name, type, status, and elapsed time. Unfinished agents come first, and the newest first in each group. Under the list is the selected agent's answer, or its latest output while it works. From 104 columns, the list and the answer are side by side.
+Run `/agents` to open a panel with every agent of the session. Each agent has two lines: its task name and type, then the start of its prompt, its status, and elapsed time. Unfinished agents come first, and the newest first in each group. Under the list are the selected agent's model and thinking level, and its answer, or its latest output while it works. The answer takes as many lines as it needs, up to the height of the panel. From 104 columns, the list and the answer are side by side.
 
 | Key                 | Action                                                       |
 | ------------------- | ------------------------------------------------------------ |

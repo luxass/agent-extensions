@@ -8,14 +8,14 @@ import {
   subagentElapsed,
   subagentTaskTitle,
 } from "./agent-status.ts";
-import { fitLine } from "./text-layout.ts";
+import { cutPlainText, fitLine } from "./text-layout.ts";
 
 /** Which agents the list shows. An agent is active until it has finished. */
 export type SubagentListFilter = "all" | "active" | "finished";
 
 /**
  * The agent list of `/agents`: which agents the filter shows, their order, and the selection.
- * Each agent takes two lines, its task and then its name, status, and elapsed time.
+ * Each agent takes two lines: its task name and type, then its task, status, and elapsed time.
  */
 export class SubagentList {
   filter: SubagentListFilter = "all";
@@ -114,8 +114,7 @@ export class SubagentList {
 
   /**
    * Draws the agents in `width` columns and at most `height` lines. `compact` rows have no blank
-   * line between agents and show the type next to the name. The selection mark dims while the
-   * preview has the focus.
+   * line between agents. The selection mark dims while the preview has the focus.
    */
   render(width: number, height: number, compact: boolean, previewFocused: boolean): string[] {
     const { theme } = this;
@@ -139,11 +138,17 @@ export class SubagentList {
     for (const record of rows.slice(this.start, this.start + slots)) {
       const selected = record.id === this.selectedId;
       const marker = selected ? theme.fg(previewFocused ? "muted" : "accent", "▌ ") : "  ";
-      const task = subagentTaskTitle(record);
-      const title = fitLine(`${marker}${selected ? theme.bold(task) : task}`, width);
+      // The short task name is the title. The prompt is long, so it goes on the second line.
+      // Text is cut before it is colored, so the selection background reaches the row's end.
+      const name = cutPlainText(record.name, width - 2);
+      const type = cutPlainText(` · ${record.agentType}`, width - 2 - visibleWidth(name));
+      const title = fitLine(
+        `${marker}${selected ? theme.bold(name) : name}${theme.fg("dim", type)}`,
+        width,
+      );
       const badge = subagentBadge(record, theme);
-      const identity = compact ? `${record.name} · ${record.agentType}` : record.name;
-      const caption = fitLine(`${marker}${theme.fg("muted", identity)}`, identityWidth);
+      const task = cutPlainText(subagentTaskTitle(record), identityWidth - 2);
+      const caption = fitLine(`${marker}${theme.fg("muted", task)}`, identityWidth);
       const duration = subagentElapsed(record);
       const timing = theme.fg(
         "dim",
