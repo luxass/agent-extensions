@@ -1,11 +1,13 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, type TUI } from "@earendil-works/pi-tui";
 
-import type { SubagentRecord } from "../manager.ts";
+import { isSubagentFinished, type SubagentRecord } from "../manager.ts";
 import type { SubagentList, SubagentListFilter } from "./agent-list.ts";
 import type { SubagentPreview } from "./agent-preview.ts";
 import {
+  subagentActivity,
   subagentBadge,
+  subagentCounters,
   subagentElapsed,
   subagentModelLabel,
   subagentTaskTitle,
@@ -132,6 +134,37 @@ function actionHints(
   return theme.fg("muted", lineEnds(left, right, width));
 }
 
+/**
+ * What the selected agent is doing and has used, such as "bash sleep 100 · ↻1 · 1 tool use ·
+ * 3.5k tokens". A finished agent has only the counters. The activity gets the room they leave.
+ */
+function progressText(record: SubagentRecord, width: number): string {
+  const counters = subagentCounters(record, { elapsed: false });
+  if (isSubagentFinished(record.status)) return counters;
+  return `${subagentActivity(record, width - visibleWidth(counters) - 3)} · ${counters}`;
+}
+
+/**
+ * The lines under the list in the stacked layout: the selected agent's progress and its model.
+ * They share one line when both fit, with the model at the right. Otherwise each has its own.
+ */
+function progressLines(state: AgentPanelState, record: SubagentRecord, width: number): string[] {
+  const { theme } = state;
+  const model = subagentModelLabel(record);
+  const room = width - visibleWidth(model) - 2;
+  // A working agent needs room for its counters and at least a short activity.
+  const needed =
+    visibleWidth(subagentCounters(record, { elapsed: false })) +
+    (isSubagentFinished(record.status) ? 0 : 19);
+  if (room >= needed) {
+    return [lineEnds(theme.fg("muted", progressText(record, room)), theme.fg("dim", model), width)];
+  }
+  return [
+    fitLine(theme.fg("muted", progressText(record, width)), width),
+    fitLine(theme.fg("dim", model), width),
+  ];
+}
+
 /** The selected agent's task, status line, and answer, for the wide and the small layout. */
 function selectedOutput(
   state: AgentPanelState,
@@ -155,6 +188,7 @@ function selectedOutput(
       theme.fg("dim", `${subagentElapsed(record)}${paused ? " · Paused" : ""}`),
       width,
     ),
+    fitLine(theme.fg("muted", progressText(record, width)), width),
     fitLine(theme.fg("muted", subagentTaskTitle(record)), width),
     "",
   ];
@@ -265,11 +299,11 @@ export function renderAgentPanel(
       body.push(`${fitLine(left[index] ?? "", layout.listWidth)} ${divider} ${right[index] ?? ""}`);
     }
   } else {
-    // Under the list: a rule, the selected agent's model line, and its answer. The answer gets
+    // Under the list: a rule, the selected agent's progress and model, and its answer. The answer gets
     // at least three lines. The list takes what it needs from the rest.
     const minimumPreview = 3;
-    const modelLines = record ? 1 : 0;
-    const listRoom = Math.max(2, available - 1 - modelLines - minimumPreview);
+    const status = record ? progressLines(state, record, inner) : [];
+    const listRoom = Math.max(2, available - 1 - status.length - minimumPreview);
     const overflow = rows.length * 2 > listRoom;
     const listBudget = overflow ? Math.max(2, listRoom - 1) : Math.max(2, rows.length * 2);
     body = list.render(inner, listBudget, true, previewFocused);
@@ -278,7 +312,7 @@ export function renderAgentPanel(
       body.push(theme.fg("dim", `${list.start + 1}–${last} of ${rows.length} agents · ↑↓ More`));
     }
     body.push(edge("─".repeat(inner)));
-    if (record) body.push(theme.fg("muted", subagentModelLabel(record)));
+    body.push(...status);
     // The answer is as tall as its text, up to the rows that are left. Fullscreen uses them all.
     const previewRoom = Math.max(minimumPreview, available - body.length);
     const previewHeight =

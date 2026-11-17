@@ -128,15 +128,18 @@ export function subagentActivity(record: SubagentRecord, room: number): string {
   return cutPlainText(cleanSubagentText(record.activity), Math.max(16, room));
 }
 
-/** Turns, tool uses, tokens with context percentage, and elapsed time, joined with dots. */
-export function subagentCounters(record: SubagentRecord): string {
+/**
+ * Turns, tool uses, tokens with context percentage, and elapsed time, joined with dots. Pass
+ * `elapsed: false` where the elapsed time is already shown next to it.
+ */
+export function subagentCounters(record: SubagentRecord, options = { elapsed: true }): string {
   const context = record.contextPercent === null ? "" : ` (${Math.round(record.contextPercent)}%)`;
   const parts = [
     `↻${record.turns}${record.maxTurns ? `/${record.maxTurns}` : ""}`,
     `${record.toolUses} tool use${record.toolUses === 1 ? "" : "s"}`,
     `${formatTokens(record.tokens.total)} tokens${context}`,
   ];
-  const elapsed = subagentElapsed(record);
+  const elapsed = options.elapsed ? subagentElapsed(record) : "";
   if (elapsed) parts.push(elapsed);
   return parts.join(" · ");
 }
