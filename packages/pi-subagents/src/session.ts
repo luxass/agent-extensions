@@ -26,7 +26,6 @@ import {
   isSubagentControlTool,
   type SubagentDefinition,
 } from "./agents.ts";
-import type { SubagentThinking } from "./api.ts";
 import { findSubagentModel, type SubagentModel } from "./models.ts";
 import type { SubagentSettings } from "./settings.ts";
 
@@ -43,6 +42,9 @@ const BUILTIN_TOOLS = new Set([
 const PACKAGE_DIRECTORY = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const WRAP_UP_INSTRUCTION =
   "You have one turn left. Wrap up now: report your findings, what you changed, and any unfinished work. Do not start new work.";
+
+/** Thinking levels accepted by Pi 1.5. */
+export type SubagentThinking = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /** Optional `Agent` call parameters. A model here wins over the agent file's. The file's other values win. */
 export interface SubagentOverrides {

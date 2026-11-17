@@ -4,8 +4,8 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import type { SubagentDefinition } from "./agents.ts";
-import type { SubagentThinking } from "./api.ts";
 import { isSubagentFinished, type SubagentManager } from "./manager.ts";
+import type { SubagentThinking } from "./session.ts";
 import {
   agentToolDescription,
   subagentFinishedText,

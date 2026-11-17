@@ -13,7 +13,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { isSubagentName, type SubagentDefinition } from "./agents.ts";
-import type { SubagentsEventMap, SubagentStatus, SubagentThinking, SubagentTokens } from "./api.ts";
 import {
   createSubagentRuntime,
   createSubagentSession,
@@ -21,10 +20,30 @@ import {
   type SubagentOverrides,
   type SubagentPolicy,
   type SubagentSession,
+  type SubagentThinking,
 } from "./session.ts";
 import type { SubagentSettings } from "./settings.ts";
 
 type AgentMessage = AgentSession["messages"][number];
+
+/** Status of one named agent. Names stay reserved after a run ends. */
+export type SubagentStatus =
+  | "queued"
+  | "running"
+  | "stopping"
+  | "completed"
+  | "stopped"
+  | "failed"
+  | "interrupted";
+
+/** Token counters for the latest start or continuation. */
+export interface SubagentTokens {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
 
 /** Custom entry type that stores agent records in the main session. */
 export const SUBAGENT_RECORD_ENTRY = "subagents-record";
@@ -130,14 +149,12 @@ function describeToolCall(name: string, args: unknown): string {
   return detail ? `${name} ${detail.split("\n")[0]}` : name;
 }
 
-/** Owns every agent of one main session: names, queue, runs, persistence, and events. */
+/** Owns every agent of one main session: names, queue, runs, and persistence. */
 export class SubagentManager {
   readonly records = new Map<string, SubagentRecord>();
   private readonly live = new Map<string, LiveRun>();
   private readonly queue: string[] = [];
   private readonly listeners = new Set<() => void>();
-  /** Last `subagents:activity` payload sent per agent, so unchanged updates are not repeated. */
-  private readonly lastActivity = new Map<string, string>();
   /** How each earlier run of a continued agent ended, by `<id>:<run>`, for its `Agent` card. */
   private readonly earlierRuns = new Map<string, SubagentRecord>();
   /** The last saved conversation read for `/agents`, so drawing it does not read the file again. */
@@ -272,11 +289,6 @@ export class SubagentManager {
       result: "",
     };
     this.records.set(record.id, record);
-    this.emit("subagents:created", {
-      ...this.identity(record),
-      task: prompt.split("\n")[0] ?? "",
-      background,
-    });
     this.schedule(record, policy, prompt);
     return record;
   }
@@ -408,12 +420,6 @@ export class SubagentManager {
       result: "",
     } satisfies Partial<SubagentRecord>);
     this.persist(record);
-    this.emit("subagents:started", {
-      ...this.identity(record),
-      run: record.run,
-      model: record.model,
-      thinking: record.thinking,
-    });
     try {
       this.runtime ??= createSubagentRuntime(this.ctx);
       const child = await createSubagentSession({
@@ -471,18 +477,6 @@ export class SubagentManager {
     if (foreground) record.receipt = "consumed";
     else if (record.stoppedBy === "model") record.receipt = "suppressed";
     else if (record.receipt === "pending") record.receipt = "unread";
-    const outcome = {
-      ...this.identity(record),
-      run: record.run,
-      status: record.status,
-      result: record.result,
-      partial: record.partial,
-      tokens: record.tokens,
-      toolUses: record.toolUses,
-      durationMs: record.endedAt - (record.startedAt ?? record.endedAt),
-    };
-    if (record.status === "completed") this.emit("subagents:completed", outcome);
-    else this.emit("subagents:failed", { ...outcome, error: record.error });
     live.release?.("finished");
     this.persist(record);
     if (!foreground) this.onRunSettled(record);
@@ -511,20 +505,7 @@ export class SubagentManager {
       };
       record.contextPercent =
         live.child?.session.getContextUsage()?.percent ?? record.contextPercent;
-      this.emit("subagents:usage", { ...this.identity(record), usage });
     } else return;
-    const activity = {
-      activity: record.activity,
-      turns: record.turns,
-      toolUses: record.toolUses,
-      contextPercent: record.contextPercent,
-    };
-    // Streaming updates every few characters. Observers only hear about real changes.
-    const signature = JSON.stringify(activity);
-    if (this.lastActivity.get(record.id) !== signature) {
-      this.lastActivity.set(record.id, signature);
-      this.emit("subagents:activity", { ...this.identity(record), ...activity });
-    }
     this.notify();
   }
 
@@ -583,7 +564,6 @@ export class SubagentManager {
     }
     if (live.child) await live.child.session.steer(message, undefined, { source: "extension" });
     else live.pendingSteers.push(message);
-    this.emit("subagents:steered", { ...this.identity(record), message });
     return record;
   }
 
@@ -641,7 +621,7 @@ export class SubagentManager {
     return this.live.get(record.id)?.child?.session.getToolDefinition(toolName);
   }
 
-  /** Marks unfinished work interrupted, stops it, and emits `subagents:disposed` last. */
+  /** Marks unfinished work interrupted and stops it. */
   async shutdown(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -663,23 +643,6 @@ export class SubagentManager {
     await Promise.allSettled(running);
     this.live.clear();
     this.listeners.clear();
-    this.emit("subagents:disposed", { sessionId: this.sessionId });
-  }
-
-  private identity(record: SubagentRecord) {
-    return {
-      sessionId: this.sessionId,
-      id: record.id,
-      name: record.name,
-      agentType: record.agentType,
-    };
-  }
-
-  private emit<TName extends keyof SubagentsEventMap>(
-    name: TName,
-    payload: SubagentsEventMap[TName],
-  ): void {
-    this.pi.events.emit(name, payload);
   }
 
   private persist(record: SubagentRecord): void {

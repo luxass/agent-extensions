@@ -20,9 +20,6 @@
     "LICENSE"
   ],
   "type": "module",
-  "exports": {
-    "./api": "./src/api.ts"
-  },
   "publishConfig": {
     "access": "public"
   },

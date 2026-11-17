@@ -66,7 +66,6 @@ export default function piSubagents(pi: ExtensionAPI): void {
       installSubagentWidget(ctx, current);
       removeShortcut = installBackgroundShortcut(pi, ctx, current);
     }
-    pi.events.emit("subagents:ready", { sessionId });
     // Last, so the tools exist when a restored result starts a main-model turn.
     delivery.deliverRestored();
   });

@@ -86,7 +86,3 @@ Set these under `subagents` in Pi's `settings.json`. Project settings apply only
 | `delivery.mode`       | `"grouped"`    | `"grouped"` reports agents of one request together, after at most 60 seconds. `"immediate"` reports each result when it is ready. |
 
 Agent conversations are saved under `~/.pi/agent/subagents/<session id>/`. After `/reload` or a resumed session, finished agents can still be read and continued. Agents that were running or queued show as interrupted and can also be continued. An agent that never started begins with the new prompt only. A result that finished but was not yet delivered arrives after the reload.
-
-## Events
-
-Other extensions can observe agents on `pi.events`: `subagents:ready`, `subagents:created`, `subagents:started`, `subagents:activity`, `subagents:steered`, `subagents:usage`, `subagents:completed`, `subagents:failed`, and `subagents:disposed`. Import the payload types from `@luxass/pi-subagents/api`. The events cannot start, steer, or stop agents.
