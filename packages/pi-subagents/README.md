@@ -39,7 +39,7 @@ Run `/agents` to open a panel with every agent of the session. Each agent has tw
 
 The conversation view shows tool calls the way Pi does, collapsed at first. Up, Down, Page Up, Page Down, Home, and End scroll it. Pi's tool expansion key opens and closes all tool calls. `t` and `T` move to the next and previous tool call, and Enter opens or closes that one. `f` switches fullscreen, and Esc goes back to the panel.
 
-In Pi's fullscreen terminal mode you can also use the mouse: click an agent, a filter tab, or a key hint in the footer, double-click an agent to open it, and scroll with the wheel.
+In Pi's fullscreen terminal mode, the mouse wheel scrolls the answer and the conversation. Everything else uses the keys.
 
 ## Agent types
 

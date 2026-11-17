@@ -22,8 +22,6 @@ export class SubagentList {
   private selectedId: string | undefined;
   /** Index of the first agent drawn, so a long list scrolls with the selection. */
   start = 0;
-  /** Lines one agent takes in the last render: 2, or 3 with a blank line between agents. */
-  rowHeight = 2;
   /** Lines the agents took in the last render. Zero when the list was not drawn. */
   drawnHeight = 0;
   private stopTargetId: string | undefined;
@@ -106,12 +104,6 @@ export class SubagentList {
     if (yes && record) await this.manager.stop(record.name, "user");
   }
 
-  /** The agent drawn at a line of the list, counted from the list's first line. */
-  idAtLine(line: number): string | undefined {
-    if (line < 0 || line >= this.drawnHeight) return undefined;
-    return this.rows()[this.start + Math.floor(line / this.rowHeight)]?.id;
-  }
-
   /**
    * Draws the agents in `width` columns and at most `height` lines. `compact` rows have no blank
    * line between agents. The selection mark dims while the preview has the focus.
@@ -119,9 +111,10 @@ export class SubagentList {
   render(width: number, height: number, compact: boolean, previewFocused: boolean): string[] {
     const { theme } = this;
     const rows = this.rows();
-    this.rowHeight = compact ? 2 : 3;
-    const slots = Math.max(1, Math.floor(height / this.rowHeight));
-    this.drawnHeight = Math.min(height, slots * this.rowHeight, rows.length * this.rowHeight);
+    // Two lines for an agent, and a blank line between agents when there is room for it.
+    const rowHeight = compact ? 2 : 3;
+    const slots = Math.max(1, Math.floor(height / rowHeight));
+    this.drawnHeight = Math.min(height, slots * rowHeight, rows.length * rowHeight);
     const index = Math.max(
       0,
       rows.findIndex((record) => record.id === this.selected()?.id),

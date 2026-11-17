@@ -5,12 +5,11 @@ import {
   visibleWidth,
   type Component,
   type TuiMouseEvent,
-  type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
 
 import type { SubagentManager } from "../manager.ts";
 import { SubagentList } from "./agent-list.ts";
-import { renderAgentPanel, type AgentPanelLayout } from "./agent-panel.ts";
+import { renderAgentPanel } from "./agent-panel.ts";
 import { SubagentPreview } from "./agent-preview.ts";
 import { cleanSubagentText, subagentStatusLabel } from "./agent-status.ts";
 import { SubagentConversation } from "./conversation.ts";
@@ -18,14 +17,6 @@ import { fitLine, lineEnds } from "./text-layout.ts";
 
 /** Reading view lines around the conversation: top border, header, two separators, footer, bottom border. */
 const READING_FRAME_LINES = 6;
-
-/** The raw input a clicked hint stands for. */
-const HINT_INPUT: Record<string, string> = {
-  enter: "\r",
-  escape: "\x1b",
-  tab: "\t",
-  end: "\x1b[F",
-};
 
 /**
  * `/agents`. The first view is a panel with the agent list, its filter tabs, and the selected
@@ -45,10 +36,6 @@ export async function openSubagentViewer(
       const redraw = () => tui.requestRender();
       let reading = false;
       let previewFocused = false;
-      let dragOffset: number | undefined;
-      // Where the last render drew things, for mouse events.
-      let panelLayout: AgentPanelLayout | undefined;
-      let readingLayout = { bodyTop: 0, bodyHeight: 0, conversationWidth: 0 };
 
       const unsubscribe = manager.subscribe(redraw);
       const border = (text: string) => theme.fg("borderAccent", text);
@@ -75,7 +62,6 @@ export async function openSubagentViewer(
         const bodyHeight = height - READING_FRAME_LINES;
         const record = list.selected();
         conversation.sync(record);
-        readingLayout = { bodyTop: 3, bodyHeight, conversationWidth: inner };
 
         const title = record ? ` ${record.name} · ${record.agentType} ` : " Agents ";
         // One space of padding at each side of the header and the footer.
@@ -191,102 +177,23 @@ export async function openSubagentViewer(
         redraw();
       };
 
-      /** A click on a hint acts like its key. */
-      const press = (key: string) => handleInput(HINT_INPUT[key] ?? key);
-
-      // Pi routes mouse events only in fullscreen terminal mode. Every action also has a key.
-      const handlePanelMouse = (event: TuiMouseEvent): TuiMouseEventResult => {
-        const layout = panelLayout;
-        if (!layout) return { handled: true, render: false };
-        const overList =
-          event.y >= layout.bodyY &&
-          event.y < layout.bodyY + layout.listHeight &&
-          (!layout.wide || event.x < layout.contentX + layout.listWidth);
-        if (event.type === "wheel") {
-          if (!list.stopTarget()) {
-            if (overList) list.move(Math.sign(event.wheelDelta ?? 0));
-            else scrollPreview(event.wheelDelta ?? 0);
-          }
-          return { handled: true, render: true };
-        }
-        // The panel takes every mouse event over it, so none reaches the chat behind.
-        if (event.type !== "click" || event.button !== "left") {
-          return { handled: true, render: false };
-        }
-        const hitAt = <Hit extends { start: number; end: number }>(hits: Hit[]) =>
-          hits.find((hit) => event.x >= hit.start && event.x < hit.end);
-
-        if (event.y === layout.footerY) {
-          const hint = hitAt(layout.actionHits);
-          if (hint) press(hint.key);
-        } else if (!list.stopTarget()) {
-          if (event.y === layout.headerY && event.x >= layout.expandX) press("f");
-          else if (event.y === layout.filterY) {
-            const view = hitAt(layout.navHits);
-            const tab = hitAt(layout.filterHits);
-            if (view) press(view.key);
-            else if (tab) list.setFilter(tab.filter);
-          } else if (overList) {
-            const id = list.idAtLine(event.y - layout.bodyY);
-            if (id) {
-              list.select(id);
-              previewFocused = false;
-              if ((event.clickCount ?? 1) > 1) press("enter");
-            }
-          } else previewFocused = true;
-        }
-        return { handled: true, render: true };
-      };
-
-      const handleReadingMouse = (event: TuiMouseEvent): TuiMouseEventResult | undefined => {
-        const line = event.y - readingLayout.bodyTop;
-        const inBody = line >= 0 && line < readingLayout.bodyHeight;
-        const inConversation = event.x >= 1 && event.x <= readingLayout.conversationWidth;
-        const onScrollbar = event.x === readingLayout.conversationWidth;
-
-        if (dragOffset !== undefined) {
-          if (event.type === "drag") {
-            conversation.dragTo(line, dragOffset);
-            return { handled: true };
-          }
-          if (event.type === "release") {
-            dragOffset = undefined;
-            return { handled: true, render: false };
-          }
-        }
-        if (event.type === "wheel") {
-          // The viewer takes every wheel event over it. An unhandled one scrolls the chat behind.
-          if (inBody && inConversation) conversation.scrollBy(event.wheelDelta ?? 0);
-          return { handled: true };
-        }
-        if (event.type !== "press" || event.button !== "left" || !inBody) return undefined;
-        if (onScrollbar && conversation.lineCount > conversation.page) {
-          const onThumb =
-            line >= conversation.thumbTop &&
-            line < conversation.thumbTop + conversation.thumbHeight;
-          dragOffset = onThumb
-            ? line - conversation.thumbTop
-            : Math.floor(conversation.thumbHeight / 2);
-          if (!onThumb) conversation.dragTo(line, dragOffset);
-          return { handled: true, capture: true };
-        }
-        if (inConversation && conversation.toggleToolAtLine(line)) return { handled: true };
-        return undefined;
-      };
-
       const component: Component & { dispose(): void } = {
         render(width) {
           if (reading) return renderReading(width);
-          const panel = renderAgentPanel(
+          return renderAgentPanel(
             { theme, tui, list, preview, fullscreen, previewFocused, redraw },
             width,
           );
-          panelLayout = panel.layout;
-          return panel.lines;
         },
         handleInput,
+        // Pi sends mouse events here only in its fullscreen terminal mode. The wheel scrolls the
+        // answer or the conversation. Every other event is taken and ignored: an event that is
+        // not taken goes to the chat behind the viewer, and the wheel would scroll that.
         handleMouse(event: TuiMouseEvent) {
-          return reading ? handleReadingMouse(event) : handlePanelMouse(event);
+          if (event.type !== "wheel") return { handled: true, render: false };
+          if (reading) conversation.scrollBy(event.wheelDelta ?? 0);
+          else if (!list.stopTarget()) scrollPreview(event.wheelDelta ?? 0);
+          return { handled: true };
         },
         invalidate() {
           preview.invalidate();

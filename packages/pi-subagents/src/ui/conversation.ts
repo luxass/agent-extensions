@@ -37,7 +37,7 @@ interface Block {
   toolCallId?: string;
 }
 
-/** A transcript line range that a click expands or collapses. */
+/** The transcript lines of one tool call, so the tool cursor can scroll to it. */
 interface ToolRow {
   start: number;
   end: number;
@@ -61,7 +61,7 @@ export class SubagentConversation {
   private toolRows: ToolRow[] = [];
   private expanded = new Set<string>();
   private allExpanded = false;
-  /** The tool call the keyboard cursor is on. Every mouse action also has a key. */
+  /** The tool call the keyboard cursor is on. */
   private selectedToolId: string | undefined;
   private recordId: string | undefined;
   private version = "";
@@ -71,10 +71,8 @@ export class SubagentConversation {
 
   scrollTop = 0;
   following = true;
-  lineCount = 0;
+  private lineCount = 0;
   page = 1;
-  thumbTop = 0;
-  thumbHeight = 1;
 
   constructor(
     private readonly tui: TUI,
@@ -193,13 +191,6 @@ export class SubagentConversation {
     for (const tool of this.tools.values()) tool.setExpanded(this.allExpanded);
   }
 
-  /** Expands or collapses the tool call drawn at a viewport line, for mouse clicks. */
-  toggleToolAtLine(viewportLine: number): boolean {
-    const line = this.scrollTop + viewportLine;
-    const row = this.toolRows.find((candidate) => line >= candidate.start && line < candidate.end);
-    return row ? this.toggleTool(row.toolCallId) : false;
-  }
-
   /** Moves the tool cursor to the next (1) or previous (-1) tool call and scrolls it into view. */
   selectTool(delta: 1 | -1): void {
     const ids = [...this.tools.keys()];
@@ -219,7 +210,7 @@ export class SubagentConversation {
     if (row && hidden) this.scrollTo(row.start - 1);
   }
 
-  /** Expands or collapses the tool call under the cursor, the key for a mouse click. */
+  /** Expands or collapses the tool call under the cursor. */
   toggleSelectedTool(): boolean {
     if (!this.selectedToolId) return false;
     // Stop following, so the call stays in view while its height changes.
@@ -259,13 +250,6 @@ export class SubagentConversation {
     this.scrollTo(Number.MAX_SAFE_INTEGER);
   }
 
-  /** Moves the scrollbar thumb to a viewport line while dragging. */
-  dragTo(viewportLine: number, thumbOffset: number): void {
-    const track = this.page - this.thumbHeight;
-    const ratio = track > 0 ? (viewportLine - thumbOffset) / track : 0;
-    this.scrollTo(Math.round(ratio * Math.max(0, this.lineCount - this.page)));
-  }
-
   /** Renders exactly `height` lines. The last column is the scrollbar. */
   render(width: number, height: number): string[] {
     const contentWidth = Math.max(1, width - 1);
@@ -291,12 +275,12 @@ export class SubagentConversation {
     this.lineCount = lines.length;
     const maxScroll = Math.max(0, this.lineCount - this.page);
     this.scrollTop = this.following ? maxScroll : Math.min(this.scrollTop, maxScroll);
-    this.thumbHeight = Math.max(
+    const thumbHeight = Math.max(
       1,
       Math.floor((this.page * this.page) / Math.max(this.page, this.lineCount)),
     );
-    this.thumbTop =
-      maxScroll > 0 ? Math.round((this.scrollTop / maxScroll) * (this.page - this.thumbHeight)) : 0;
+    const thumbTop =
+      maxScroll > 0 ? Math.round((this.scrollTop / maxScroll) * (this.page - thumbHeight)) : 0;
 
     const visible = lines.slice(this.scrollTop, this.scrollTop + this.page);
     while (visible.length < this.page) visible.push("");
@@ -304,7 +288,7 @@ export class SubagentConversation {
       const fitted = truncateToWidth(line, contentWidth, "");
       const padding = " ".repeat(Math.max(0, contentWidth - visibleWidth(fitted)));
       if (maxScroll === 0) return `${fitted}${padding} `;
-      const thumb = index >= this.thumbTop && index < this.thumbTop + this.thumbHeight;
+      const thumb = index >= thumbTop && index < thumbTop + thumbHeight;
       return `${fitted}${padding}${this.theme.fg(thumb ? "scrollbarThumb" : "scrollbarTrack", thumb ? "┃" : "│")}`;
     });
     if (marker) {
