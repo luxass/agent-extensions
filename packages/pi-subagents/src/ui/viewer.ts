@@ -14,6 +14,7 @@ import { renderAgentPanel, type AgentPanelLayout } from "./agent-panel.ts";
 import { SubagentPreview } from "./agent-preview.ts";
 import { cleanSubagentText, subagentStatusLabel } from "./agent-status.ts";
 import { SubagentConversation } from "./conversation.ts";
+import { fitLine, lineEnds } from "./text-layout.ts";
 
 /** Reading view lines around the conversation: top border, header, two separators, footer, bottom border. */
 const READING_FRAME_LINES = 6;
@@ -77,25 +78,49 @@ export async function openSubagentViewer(
         readingLayout = { bodyTop: 3, bodyHeight, conversationWidth: inner };
 
         const title = record ? ` ${record.name} · ${record.agentType} ` : " Agents ";
+        // One space of padding at each side of the header and the footer.
+        const textWidth = Math.max(1, inner - 2);
+        const dot = theme.fg("muted", "·");
+        // The status stays at the right. In a narrow terminal the model is what gets cut.
         const header = record
-          ? ` ${theme.bold(record.name)} ${theme.fg("muted", "·")} ${record.model || "model pending"} ${theme.fg("muted", "·")} thinking ${record.thinking} ${theme.fg("muted", "·")} ${subagentStatusLabel(record)}${record.error ? ` ${theme.fg("error", cleanSubagentText(record.error).split("\n")[0] ?? "")}` : ""}`
-          : theme.fg("dim", " No agent selected.");
+          ? lineEnds(
+              [
+                theme.bold(record.name),
+                ...(record.error
+                  ? [theme.fg("error", cleanSubagentText(record.error).split("\n")[0] ?? "")]
+                  : []),
+                record.model || "model pending",
+                `thinking ${record.thinking}`,
+              ].join(` ${dot} `),
+              subagentStatusLabel(record),
+              textWidth,
+            )
+          : fitLine(theme.fg("dim", "No agent selected."), textWidth);
+
+        // "Esc Back" stays at the right. The other hints are added while they fit, so a narrow
+        // terminal drops whole hints and never the way out.
         const expand = keybindings.getKeys("app.tools.expand")[0] ?? "ctrl+o";
-        const hints = [
-          "↑↓ scroll",
-          "t/T tool",
-          "enter expand",
-          `${expand} all tools`,
-          fullscreen ? "f floating" : "f fullscreen",
-          "esc back",
-        ];
+        const back = textWidth < 28 ? "Esc" : "Esc Back";
+        const budget = Math.max(0, textWidth - visibleWidth(back) - 2);
+        let hints = "";
+        for (const hint of [
+          "↑↓ Scroll",
+          "t/T Tool",
+          "Enter Expand",
+          `${expand} All tools`,
+          fullscreen ? "f Floating" : "f Fullscreen",
+        ]) {
+          const gap = hints ? "   " : "";
+          if (visibleWidth(hints + gap + hint) > budget) break;
+          hints += gap + hint;
+        }
         return [
           edge("┌", "┐", theme.fg("accent", title), width),
-          row(header, inner),
+          row(` ${header}`, inner),
           border(`├${"─".repeat(inner)}┤`),
           ...conversation.render(inner, bodyHeight).map((line) => row(line, inner)),
           border(`├${"─".repeat(inner)}┤`),
-          row(theme.fg("dim", ` ${hints.join(" · ")}`), inner),
+          row(` ${theme.fg("dim", lineEnds(hints, back, textWidth))}`, inner),
           border(`└${"─".repeat(inner)}┘`),
         ];
       };
