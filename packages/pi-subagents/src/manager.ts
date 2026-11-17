@@ -13,6 +13,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { isSubagentName, type SubagentDefinition } from "./agents.ts";
+import { subagentMessageText } from "./message-text.ts";
 import {
   createSubagentRuntime,
   createSubagentSession,
@@ -130,10 +131,7 @@ function lastAssistantText(
   for (let index = messages.length - 1; index >= firstMessage; index--) {
     const message = messages[index];
     if (message?.role !== "assistant") continue;
-    const text = message.content
-      .flatMap((part) => (part.type === "text" ? [part.text] : []))
-      .join("\n")
-      .trim();
+    const text = subagentMessageText(message.content).trim();
     if (message.stopReason === "error")
       return { text, error: message.errorMessage ?? "The model request failed." };
     if (text) return { text };

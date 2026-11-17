@@ -22,6 +22,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 import type { SubagentManager, SubagentRecord } from "../manager.ts";
+import { subagentMessageText } from "../message-text.ts";
 import { cleanSubagentText, cleanSubagentValue } from "./agent-status.ts";
 
 type TranscriptMessage = AgentSession["messages"][number];
@@ -42,13 +43,6 @@ interface ToolRow {
   start: number;
   end: number;
   toolCallId: string;
-}
-
-function textOf(content: string | readonly { type: string; text?: string }[]): string {
-  if (typeof content === "string") return content;
-  return content
-    .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
-    .join("\n");
 }
 
 /**
@@ -128,7 +122,7 @@ export class SubagentConversation {
     this.tools.clear();
     for (const message of messages) {
       if (message.role === "user") {
-        const text = cleanSubagentText(textOf(message.content));
+        const text = cleanSubagentText(subagentMessageText(message.content));
         if (text.trim())
           this.blocks.push({ component: new UserMessageComponent(text, markdownTheme) });
       } else if (message.role === "assistant") {
@@ -177,7 +171,7 @@ export class SubagentConversation {
           false,
         );
       } else if (message.role === "custom" && message.display) {
-        const text = cleanSubagentText(textOf(message.content));
+        const text = cleanSubagentText(subagentMessageText(message.content));
         if (text.trim())
           this.blocks.push({ component: new Text(this.theme.fg("muted", text), 1, 0) });
       }

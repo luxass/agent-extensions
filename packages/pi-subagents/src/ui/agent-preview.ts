@@ -2,6 +2,7 @@ import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Markdown, ScrollView, Text } from "@earendil-works/pi-tui";
 
 import { isSubagentFinished, type SubagentManager, type SubagentRecord } from "../manager.ts";
+import { subagentMessageText } from "../message-text.ts";
 import { cleanSubagentText } from "./agent-status.ts";
 
 /** What the preview shows for an agent: its answer, its latest tool output, or a waiting note. */
@@ -10,23 +11,6 @@ interface SubagentOutput {
   text: string;
   /** Heading of a tool output, such as "Output · bash". */
   label?: string;
-}
-
-function partsText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .flatMap((part: unknown) =>
-      typeof part === "object" &&
-      part !== null &&
-      "type" in part &&
-      part.type === "text" &&
-      "text" in part &&
-      typeof part.text === "string"
-        ? [part.text]
-        : [],
-    )
-    .join("\n");
 }
 
 /**
@@ -43,7 +27,7 @@ function subagentOutput(record: SubagentRecord, manager: SubagentManager): Subag
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
     if (message?.role === "toolResult") {
-      const text = partsText(message.content);
+      const text = subagentMessageText(message.content);
       if (text.trim()) return { kind: "tool", label: `Output · ${message.toolName}`, text };
     } else if (message?.role === "assistant") {
       const call = message.content.find((part) => part.type === "toolCall");
@@ -51,7 +35,7 @@ function subagentOutput(record: SubagentRecord, manager: SubagentManager): Subag
       if (call?.type === "toolCall" && index === messages.length - 1) {
         return { kind: "tool", label: `Live output · ${call.name}`, text: "Waiting for output…" };
       }
-      const text = partsText(message.content);
+      const text = subagentMessageText(message.content);
       if (text.trim()) return { kind: "answer", text };
     }
   }
