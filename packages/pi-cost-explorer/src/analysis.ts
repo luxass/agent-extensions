@@ -163,63 +163,18 @@ function toolCallNames(message: AssistantMessage): string[] {
  * Custom entry type that @luxass/pi-subagents writes once for each agent run. The agent's model
  * requests are saved in the agent's own session, so this entry is how they reach this session.
  */
-const AGENT_RUN_USAGE_ENTRY = "subagents-usage";
+const SUBAGENT_USAGE_ENTRY_TYPE = "subagents-usage";
 
-interface AgentRunUsage {
+/**
+ * The fields of a `subagents-usage` entry that the cost explorer reads. pi-subagents owns the
+ * full shape as `SubagentRunUsage`, and it saves Pi's own usage record in `usage`.
+ */
+interface SubagentUsageEntryData {
   /** The agent's task name. */
   name: string;
   provider: string;
   model: string;
   usage: Usage;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function tokenNumbers(value: Record<string, unknown>): Record<TokenKind, number> | undefined {
-  const { input, output, cacheRead, cacheWrite } = value;
-  if (
-    typeof input !== "number" ||
-    typeof output !== "number" ||
-    typeof cacheRead !== "number" ||
-    typeof cacheWrite !== "number"
-  ) {
-    return undefined;
-  }
-  return { input, output, cacheRead, cacheWrite };
-}
-
-/**
- * Reads the data of an agent run entry. The entry belongs to another package, so its shape is
- * checked, and an entry that does not fit is left out of the totals.
- */
-function readAgentRunUsage(data: unknown): AgentRunUsage | undefined {
-  if (!isRecord(data)) return undefined;
-  const { name, provider, model, usage } = data;
-  if (typeof name !== "string" || typeof provider !== "string" || typeof model !== "string") {
-    return undefined;
-  }
-  if (!isRecord(usage)) return undefined;
-  const { cost, totalTokens } = usage;
-  if (!isRecord(cost)) return undefined;
-  const tokens = tokenNumbers(usage);
-  const costs = tokenNumbers(cost);
-  const { total } = cost;
-  if (!tokens || !costs || typeof total !== "number") return undefined;
-  return {
-    name,
-    provider,
-    model,
-    usage: {
-      ...tokens,
-      totalTokens:
-        typeof totalTokens === "number"
-          ? totalTokens
-          : tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite,
-      cost: { ...costs, total },
-    },
-  };
 }
 
 /**
@@ -312,18 +267,16 @@ export function analyze(
         });
       } else if ((entry.type === "compaction" || entry.type === "branch_summary") && entry.usage) {
         addRecord({ ...base, source: entry.type, label: entry.type, usage: entry.usage });
-      } else if (entry.type === "custom" && entry.customType === AGENT_RUN_USAGE_ENTRY) {
-        const run = readAgentRunUsage(entry.data);
-        if (run) {
-          addRecord({
-            ...base,
-            source: "agent",
-            label: run.name,
-            provider: run.provider,
-            model: run.model,
-            usage: run.usage,
-          });
-        }
+      } else if (entry.type === "custom" && entry.customType === SUBAGENT_USAGE_ENTRY_TYPE) {
+        const run = entry.data as SubagentUsageEntryData;
+        addRecord({
+          ...base,
+          source: "agent",
+          label: run.name,
+          provider: run.provider,
+          model: run.model,
+          usage: run.usage,
+        });
       }
       continue;
     }
