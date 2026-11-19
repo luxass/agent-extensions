@@ -17,6 +17,9 @@ export const SUBAGENT_RESULT_LIMIT = 8000;
 /** Longest wait for siblings in grouped delivery, from the first ready result. */
 const GROUP_WAIT_MS = 60_000;
 
+/** Time between checks while Pi compacts or summarizes a branch on the user's command. */
+const IDLE_CHECK_MS = 1000;
+
 /** Snapshots shown by the result block. They keep the full text for expansion. */
 export interface SubagentResultDetails {
   records: SubagentRecord[];
@@ -52,6 +55,7 @@ export class SubagentDelivery {
   /** When each request's first unread result became ready, for the grouped deadline. */
   private readyAt = new Map<number, number>();
   private timers = new Map<number, ReturnType<typeof setTimeout>>();
+  private idleCheck: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly pi: ExtensionAPI,
@@ -71,7 +75,7 @@ export class SubagentDelivery {
       if (!this.readyAt.has(record.requestId)) this.readyAt.set(record.requestId, Date.now());
     }
     // A suppressed sibling can also complete a waiting group.
-    if (!this.busy && this.ctx.isIdle()) this.flushIdle();
+    this.flushWhenIdle();
   }
 
   /**
@@ -84,7 +88,7 @@ export class SubagentDelivery {
       this.ready.push(record);
       if (!this.readyAt.has(record.requestId)) this.readyAt.set(record.requestId, Date.now());
     }
-    if (!this.busy && this.ctx.isIdle()) this.flushIdle();
+    this.flushWhenIdle();
   }
 
   /** The main session started a run, so ready results wait for a boundary instead. */
@@ -92,6 +96,8 @@ export class SubagentDelivery {
     this.busy = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
+    clearTimeout(this.idleCheck);
+    this.idleCheck = undefined;
   }
 
   /** At a turn boundary that continues, add ready results to the next request without an extra one. */
@@ -114,6 +120,23 @@ export class SubagentDelivery {
   agentSettled(): void {
     this.busy = false;
     this.flushIdle();
+  }
+
+  /**
+   * Delivers ready results when no main-model run is active. Pi is also not idle while it compacts
+   * or summarizes a branch on the user's command, and no main-model run ends that. So delivery
+   * checks again until Pi is idle.
+   */
+  private flushWhenIdle(): void {
+    if (this.busy || this.disposed) return;
+    if (this.ctx.isIdle()) {
+      this.flushIdle();
+      return;
+    }
+    this.idleCheck ??= setTimeout(() => {
+      this.idleCheck = undefined;
+      this.flushWhenIdle();
+    }, IDLE_CHECK_MS);
   }
 
   private flushIdle(): void {
@@ -145,6 +168,11 @@ export class SubagentDelivery {
         () => {
           this.timers.delete(requestId);
           if (this.busy || this.disposed) return;
+          if (!this.ctx.isIdle()) {
+            // Pi is compacting. The idle check sets this timer again, and it then fires at once.
+            this.flushWhenIdle();
+            return;
+          }
           // Report what finished. Stragglers form the next batch.
           this.sendGroup(this.ready.filter((record) => record.requestId === requestId));
         },
@@ -202,6 +230,8 @@ export class SubagentDelivery {
     this.disposed = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
+    clearTimeout(this.idleCheck);
+    this.idleCheck = undefined;
     this.ready = [];
   }
 }
