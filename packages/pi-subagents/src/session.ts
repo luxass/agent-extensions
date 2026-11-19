@@ -43,6 +43,15 @@ const PACKAGE_DIRECTORY = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const WRAP_UP_INSTRUCTION =
   "You have one turn left. Wrap up now: report your findings, what you changed, and any unfinished work. Do not start new work.";
 
+/** Custom message type of the note that follows an agent's inherited context. */
+const SUBAGENT_INHERITED_CONTEXT_MESSAGE = "subagents-inherited-context";
+/**
+ * Ends the copied conversation. Without it, an agent can take the main session's last request as
+ * its own and try to start the agent that it is.
+ */
+const INHERITED_CONTEXT_NOTE =
+  "The conversation above is a copy of the main session's conversation, given to you as background. You are a separate agent that the main session started. Do not continue that conversation or carry out its requests. Its tools are not yours: you cannot start or control agents, so use only the tools you have. Do the task in the next message and reply with its result.";
+
 /** Thinking levels accepted by Pi 1.5. */
 export type SubagentThinking = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -264,6 +273,14 @@ export async function createSubagentSession(options: {
       parentSession: ctx.sessionManager.getSessionFile(),
     });
     for (const message of policy.inherited) sessionManager.appendMessage(message);
+    if (policy.inherited.length) {
+      // Shown in `/agents` too, where it marks the end of the copied conversation.
+      sessionManager.appendCustomMessageEntry(
+        SUBAGENT_INHERITED_CONTEXT_MESSAGE,
+        INHERITED_CONTEXT_NOTE,
+        true,
+      );
+    }
   }
 
   const { session } = await createAgentSession({
