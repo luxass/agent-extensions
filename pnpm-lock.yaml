@@ -204,6 +204,9 @@ catalogs:
     '@earendil-works/pi-coding-agent':
       specifier: 1.5.0
       version: 1.5.0
+    '@earendil-works/pi-schema':
+      specifier: 1.5.0
+      version: 1.5.0
     '@earendil-works/pi-tui':
       specifier: 1.5.0
       version: 1.5.0
@@ -354,6 +357,25 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: catalog:pi
         version: 1.5.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-tui':
+        specifier: catalog:pi
+        version: 1.5.0
+
+  packages/pi-subagents:
+    dependencies:
+      typebox:
+        specifier: '*'
+        version: 1.4.2
+    devDependencies:
+      '@earendil-works/pi-ai':
+        specifier: catalog:pi
+        version: 1.5.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(undici@8.12.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-coding-agent':
+        specifier: catalog:pi
+        version: 1.5.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.22.0)(zod@4.1.8)
+      '@earendil-works/pi-schema':
+        specifier: catalog:pi
+        version: 1.5.0
       '@earendil-works/pi-tui':
         specifier: catalog:pi
         version: 1.5.0

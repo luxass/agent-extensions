@@ -7,13 +7,23 @@ type UserMessage = Extract<AgentMessage, { role: "user" }>;
 
 export type Usage = UsageEntry["usage"];
 
-/** Where a usage record came from. Matches the sources Pi adds to its own session totals. */
-export type UsageSource = "assistant" | "tool" | "usage" | "compaction" | "branch_summary";
+/**
+ * Where a usage record came from. All but `agent` are the sources Pi adds to its own session
+ * totals. `agent` is an agent run saved by @luxass/pi-subagents, which Pi's totals leave out.
+ */
+export type UsageSource =
+  | "assistant"
+  | "tool"
+  | "usage"
+  | "agent"
+  | "compaction"
+  | "branch_summary";
 
 export const SOURCE_LABELS: Record<UsageSource, string> = {
   assistant: "Model requests",
   tool: "Nested tool usage",
   usage: "Background usage",
+  agent: "Agents",
   compaction: "Compaction summaries",
   branch_summary: "Branch summaries",
 };
@@ -31,7 +41,7 @@ type TokenKind = (typeof TOKEN_KINDS)[number];
 export interface UsageRecord {
   entryId: string;
   source: UsageSource;
-  /** Model id, tool name, or usage kind. */
+  /** Model id, tool name, usage kind, or agent task name. */
   label: string;
   provider?: string;
   model?: string;
@@ -150,10 +160,29 @@ function toolCallNames(message: AssistantMessage): string[] {
 }
 
 /**
+ * Custom entry type that @luxass/pi-subagents writes once for each agent run. The agent's model
+ * requests are saved in the agent's own session, so this entry is how they reach this session.
+ */
+const SUBAGENT_USAGE_ENTRY_TYPE = "subagents-usage";
+
+/**
+ * The fields of a `subagents-usage` entry that the cost explorer reads. pi-subagents owns the
+ * full shape as `SubagentRunUsage`, and it saves Pi's own usage record in `usage`.
+ */
+interface SubagentUsageEntryData {
+  /** The agent's task name. */
+  name: string;
+  provider: string;
+  model: string;
+  usage: Usage;
+}
+
+/**
  * Builds every view of the session from its entries.
  *
  * Accounting follows Pi's `/session` totals: assistant messages, tool results with
  * nested usage, usage entries, and compaction or branch summaries that report usage.
+ * Agent runs saved by @luxass/pi-subagents are added on top, as their own source.
  */
 export function analyze(
   entries: readonly SessionEntry[],
@@ -238,6 +267,16 @@ export function analyze(
         });
       } else if ((entry.type === "compaction" || entry.type === "branch_summary") && entry.usage) {
         addRecord({ ...base, source: entry.type, label: entry.type, usage: entry.usage });
+      } else if (entry.type === "custom" && entry.customType === SUBAGENT_USAGE_ENTRY_TYPE) {
+        const run = entry.data as SubagentUsageEntryData;
+        addRecord({
+          ...base,
+          source: "agent",
+          label: run.name,
+          provider: run.provider,
+          model: run.model,
+          usage: run.usage,
+        });
       }
       continue;
     }
