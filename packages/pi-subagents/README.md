@@ -14,6 +14,8 @@ To try it from this repository, run `pi -e ./packages/pi-subagents`.
 
 Ask Pi to delegate a task, or start a prompt with an agent type, such as `@explorer review authentication`. The main model starts the agent and gives it a unique task name, such as `auth-review`. Agents run in the background by default. Their results appear in the chat when they finish.
 
+In Rex, the extension reports how many subagents are running, even after Pi's main turn ends. It clears the report when the last subagent stops. Queued subagents do not count as running.
+
 Two agent types are built in. `general-purpose` has Pi's default tools: `read`, `bash`, `edit`, and `write`. `explorer` is told not to change files and has `read`, `grep`, `find`, `ls`, and `bash`. Its instructions are not a sandbox, because `bash` can still change files.
 
 To give an agent a correction, or to continue a finished agent, ask the main model. You cannot send messages to an agent directly.
