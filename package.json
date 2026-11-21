@@ -26,7 +26,6 @@
     "oxlint-tsgolint": "catalog:lint",
     "react": "catalog:covers",
     "satori": "catalog:covers",
-    "typebox": "catalog:schema",
     "typescript": "catalog:compiler"
   },
   "packageManager": "pnpm@12.14.0"
