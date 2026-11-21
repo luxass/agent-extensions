@@ -1,5 +1,15 @@
 # @luxass/pi-questions
 
+## 0.2.0
+
+### Minor Changes
+
+- [#44](https://github.com/luxass/agent-extensions/pull/44) [`3a3e9b1`](https://github.com/luxass/agent-extensions/commit/3a3e9b13e8d992cf8f53b1ee18bf79b4ffe03d7d) Thanks [@luxass](https://github.com/luxass)! - Show `Waiting for answers` in Rex and other terminals that support Pi's program status while a questionnaire is open. Clear the status when the questionnaire closes.
+
+### Patch Changes
+
+- [#47](https://github.com/luxass/agent-extensions/pull/47) [`bcec048`](https://github.com/luxass/agent-extensions/commit/bcec04828d6bf1853bc8f4ae68bef573749d3146) Thanks [@luxass](https://github.com/luxass)! - Support Pi 1.6's read-only render output while keeping compatibility with Pi 1.5.
+
 ## 0.1.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @luxass/pi-btw
 
+## 0.2.2
+
+### Patch Changes
+
+- [#47](https://github.com/luxass/agent-extensions/pull/47) [`bcec048`](https://github.com/luxass/agent-extensions/commit/bcec04828d6bf1853bc8f4ae68bef573749d3146) Thanks [@luxass](https://github.com/luxass)! - Support Pi 1.6's read-only render output while keeping compatibility with Pi 1.5.
+
 ## 0.2.1
 
 ### Patch Changes
