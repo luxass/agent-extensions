@@ -17,6 +17,7 @@ import {
 } from "./questions.ts";
 
 const TOOL_NAME = "ask_questions";
+const QUESTION_BLOCKED_STATUS = { kind: "question", message: "Waiting for answers" } as const;
 // Only one questionnaire can own Pi's editor slot. Others stack at the bottom as overlays.
 let inlineInUse = false;
 
@@ -56,15 +57,16 @@ async function showQuestions(
         ? {
             overlay: true,
             overlayOptions: { width: "100%", maxHeight: "70%", anchor: "bottom-center" },
+            blocked: QUESTION_BLOCKED_STATUS,
           }
-        : { overlay: false },
+        : { overlay: false, blocked: QUESTION_BLOCKED_STATUS },
     );
   let ownsInlineSlot = !inlineInUse;
   if (ownsInlineSlot) inlineInUse = true;
-  const releaseLabel = blocked.block("Waiting for answers");
+  const releaseLabel = blocked.block(QUESTION_BLOCKED_STATUS.message);
   try {
     // Herdr's optional Pi integration owns state reporting and counts overlapping blockers.
-    pi.events.emit("herdr:blocked", { active: true, label: "Waiting for answers" });
+    pi.events.emit("herdr:blocked", { active: true, label: QUESTION_BLOCKED_STATUS.message });
     if (ownsInlineSlot) {
       const result = await mount(false);
       if (result) return result;
