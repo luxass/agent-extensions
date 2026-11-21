@@ -4,7 +4,7 @@ import { ScrollView, type Component, type TuiMouseEvent } from "@earendil-works/
 export class Viewport extends ScrollView {
   maxHeight = 1;
   totalLines = 0;
-  followLine?: (lines: string[]) => number | undefined;
+  followLine?: (lines: readonly string[]) => number | undefined;
   private readonly requestRender: () => void;
 
   constructor(content: Component, requestRender: () => void) {
