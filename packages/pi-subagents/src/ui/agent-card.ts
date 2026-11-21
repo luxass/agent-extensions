@@ -52,7 +52,7 @@ export class AgentCardBody implements Component {
     private readonly fallbackText = "",
   ) {}
 
-  render(width: number): string[] {
+  render(width: number): ReturnType<Component["render"]> {
     const record = this.record();
     if (!record) {
       if (!this.fallbackText) return [];

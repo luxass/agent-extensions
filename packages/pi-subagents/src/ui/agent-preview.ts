@@ -1,5 +1,5 @@
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Markdown, ScrollView, Text } from "@earendil-works/pi-tui";
+import { Markdown, ScrollView, Text, type Component } from "@earendil-works/pi-tui";
 
 import { isSubagentFinished, type SubagentManager, type SubagentRecord } from "../manager.ts";
 import { subagentMessageText } from "../message-text.ts";
@@ -47,7 +47,7 @@ function subagentOutput(record: SubagentRecord, manager: SubagentManager): Subag
  * top of a finished answer when it has only a few lines to show it in.
  */
 export class SubagentPreview {
-  private lines: string[] = [];
+  private lines: ReturnType<Component["render"]> = [];
   private shownText: string | undefined;
   private width = 0;
   private markdown: Markdown | undefined;

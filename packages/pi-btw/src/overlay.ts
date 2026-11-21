@@ -69,7 +69,7 @@ export function createOverlay({
 
   const border = (text: string) => theme.fg("borderAccent", text);
 
-  function markdown(answer: AssistantMessage, width: number): string[] {
+  function markdown(answer: AssistantMessage, width: number): readonly string[] {
     let rendered = answers.get(answer);
     if (rendered == null) {
       rendered = new Markdown(answerText(answer), 0, 0, getMarkdownTheme());
@@ -84,7 +84,7 @@ export function createOverlay({
     );
   }
 
-  function answer(lines: string[]): string[] {
+  function answer(lines: readonly string[]): string[] {
     return lines.map((line) => theme.fg("borderAccent", "▎ ") + line);
   }
 
