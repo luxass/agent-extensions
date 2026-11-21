@@ -9,6 +9,7 @@ import {
 } from "./mentions.ts";
 import { SUBAGENT_RESULT_MESSAGE, SubagentDelivery } from "./results.ts";
 import { readSubagentSettings } from "./settings.ts";
+import { reportSubagentsToRex } from "./terminal-status.ts";
 import { registerAgentTool, registerSubagentTools } from "./tools.ts";
 import { renderSubagentResultMessage } from "./ui/agent-card.ts";
 import { installBackgroundShortcut } from "./ui/background-shortcut.ts";
@@ -21,6 +22,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
   let manager: SubagentManager | undefined;
   let delivery: SubagentDelivery | undefined;
   let removeShortcut: (() => void) | undefined;
+  let stopRexStatus: (() => void) | undefined;
 
   pi.registerMessageRenderer(SUBAGENT_RESULT_MESSAGE, renderSubagentResultMessage);
 
@@ -67,6 +69,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
       installSubagentWidget(ctx, current);
       installSubagentCostStatus(ctx, current);
       removeShortcut = installBackgroundShortcut(pi, ctx, current);
+      stopRexStatus = reportSubagentsToRex(current);
     }
     // Last, so the tools exist when a restored result starts a main-model turn.
     delivery.deliverRestored();
@@ -97,6 +100,8 @@ export default function piSubagents(pi: ExtensionAPI): void {
     delivery?.dispose();
     removeShortcut?.();
     removeShortcut = undefined;
+    stopRexStatus?.();
+    stopRexStatus = undefined;
     if (ctx.mode === "tui") {
       ctx.ui.setWidget("subagents", undefined);
       ctx.ui.setStatus(SUBAGENT_COST_STATUS, undefined);
