@@ -1,5 +1,11 @@
 # @luxass/pi-subagents
 
+## 0.1.1
+
+### Patch Changes
+
+- [#48](https://github.com/luxass/agent-extensions/pull/48) [`3abf34f`](https://github.com/luxass/agent-extensions/commit/3abf34f70fe9e3ff3c0f27f989f48aee01065821) Thanks [@luxass](https://github.com/luxass)! - Install `pi-schema` as a runtime dependency so Pi can load Subagents from npm.
+
 ## 0.1.0
 
 ### Minor Changes
