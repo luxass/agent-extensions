@@ -1,9 +1,13 @@
 import type { SubagentManager } from "./manager.ts";
 
-// Pi's terminal API writes only the root OSC 7501 record. Use a child record so
+// Pi's terminal API writes only the root OSC 7501 record. Use child records so
 // Pi can report that its own turn finished or is blocked without hiding subagent work.
-const SUBAGENT_STATUS_ID = "pi-subagents";
-const CLEAR_SUBAGENTS = `\x1b]7501;state=clear:id=${SUBAGENT_STATUS_ID}\x1b\\`;
+const SUBAGENT_STATUS_NAMESPACE = "pi-subagents";
+const OSC_TITLE_MAX_BYTES = 192;
+
+function clearRexStatus(id: string): string {
+  return `\x1b]7501;state=clear:id=${id}\x1b\\`;
+}
 
 /** Reports running subagents to Rex independently of Pi's main turn. */
 export function reportSubagentsToRex(manager: SubagentManager): (() => void) | undefined {
@@ -16,7 +20,7 @@ export function reportSubagentsToRex(manager: SubagentManager): (() => void) | u
     return undefined;
   }
 
-  let reportedCount = 0;
+  let reported = new Map<string, "running" | "stopping">();
   let pending = false;
   let disposed = false;
   let resend = false;
@@ -28,24 +32,34 @@ export function reportSubagentsToRex(manager: SubagentManager): (() => void) | u
     queueMicrotask(() => {
       pending = false;
       if (disposed) return;
-      const count = manager
-        .list()
-        .filter(({ status }) => status === "running" || status === "stopping").length;
-      if (!resend && count === reportedCount) return;
-      resend = false;
-      reportedCount = count;
-      if (count === 0) {
-        process.stdout.write(CLEAR_SUBAGENTS);
-        return;
+
+      const active = new Map<string, "running" | "stopping">();
+      let updates = "";
+      for (const { id, name, status } of manager.list()) {
+        if (status !== "running" && status !== "stopping") continue;
+        // A UUID without hyphens fits the OSC limit of 32 bytes per ID segment.
+        const statusId = `${SUBAGENT_STATUS_NAMESPACE}/${id.replaceAll("-", "")}`;
+        active.set(statusId, status);
+        if (!resend && reported.get(statusId) === status) continue;
+        // Task names are ASCII and have no length limit. Shorten only the title sent to Rex.
+        const title = Buffer.from(name.slice(0, OSC_TITLE_MAX_BYTES)).toString("base64");
+        const message = Buffer.from(status === "running" ? "Running" : "Stopping").toString(
+          "base64",
+        );
+        updates += `\x1b]7501;state=working:id=${statusId}:title=${title}:msg=${message}\x1b\\`;
       }
-      const message = `${count} ${count === 1 ? "subagent" : "subagents"} running`;
-      const encoded = Buffer.from(message).toString("base64");
-      process.stdout.write(`\x1b]7501;state=working:id=${SUBAGENT_STATUS_ID}:msg=${encoded}\x1b\\`);
+
+      let clears = "";
+      for (const id of reported.keys()) {
+        if (!active.has(id)) clears += clearRexStatus(id);
+      }
+      reported = active;
+      resend = false;
+      if (clears || updates) process.stdout.write(clears + updates);
     });
   };
   const onResume = () => {
-    // Pi clears all records when it suspends, even if the count stays the same.
-    if (reportedCount === 0) return;
+    // Pi clears all records when it suspends. Resend even if no status changed.
     resend = true;
     scheduleReport();
   };
@@ -54,9 +68,10 @@ export function reportSubagentsToRex(manager: SubagentManager): (() => void) | u
   scheduleReport();
 
   return () => {
+    if (disposed) return;
     disposed = true;
     unsubscribe();
     process.off("SIGCONT", onResume);
-    if (reportedCount > 0) process.stdout.write(CLEAR_SUBAGENTS);
+    process.stdout.write(clearRexStatus(SUBAGENT_STATUS_NAMESPACE));
   };
 }
