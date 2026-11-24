@@ -1,6 +1,6 @@
 {
   "name": "@luxass/pi-subagents",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Delegate tasks to named Pi agents and follow their conversations.",
   "keywords": [
     "pi",

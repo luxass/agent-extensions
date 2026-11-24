@@ -1,5 +1,15 @@
 # @luxass/pi-subagents
 
+## 0.2.0
+
+### Minor Changes
+
+- [#52](https://github.com/luxass/agent-extensions/pull/52) [`c52af47`](https://github.com/luxass/agent-extensions/commit/c52af47f7a36c0679ebb44f298b40c9cbdcd4d4f) Thanks [@luxass](https://github.com/luxass)! - Report each running subagent to Rex by task name instead of sending a single count. Clear each status when that subagent finishes or stops.
+
+### Patch Changes
+
+- [#51](https://github.com/luxass/agent-extensions/pull/51) [`d3a8c47`](https://github.com/luxass/agent-extensions/commit/d3a8c4761530fdb6379b14053cce82556f11b8c9) Thanks [@luxass](https://github.com/luxass)! - Deliver background results only to branches that started the run and have not received it. Switching branches with `/tree` no longer sends results to an unrelated conversation.
+
 ## 0.1.1
 
 ### Patch Changes
