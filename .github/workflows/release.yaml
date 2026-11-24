@@ -66,24 +66,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
+  # Stage each unpublished package, and tag and release it only after npm serves the approved tarball.
   publish:
     needs: select-mode
     if: ${{ needs.select-mode.outputs.mode == 'publish' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: npm-registry
     permissions:
       contents: write
       id-token: write
-    steps:
-      - name: Set up workspace
-        uses: luxass/shared-workflows/actions/setup@3a2dc4e52b786682a0f0fba65eca46b49b7b5c8b # actions/setup/v0.1.5
-        with:
-          node-version: "24"
-          fetch-depth: 0
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Stage packages and create GitHub releases
-        uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
-        with:
-          script: pnpm release:stage
+    uses: luxass/shared-workflows/.github/workflows/reusable-release-npm-staged-workspace.yaml@d210e5e8b6c449f7ffe5bafc7a8f6244a1275530 # luxass/shared-workflows#91
