@@ -87,7 +87,9 @@ Set these under `subagents` in Pi's `settings.json`. Project settings apply only
 | `widget`              | `"background"` | Agents counted in the line above the editor: `"background"`, `"all"`, or `"off"`.                                                 |
 | `delivery.mode`       | `"grouped"`    | `"grouped"` reports agents of one request together, after at most 60 seconds. `"immediate"` reports each result when it is ready. |
 
-Agent conversations are saved under `~/.pi/agent/subagents/<session id>/`. After `/reload` or a resumed session, finished agents can still be read and continued. Agents that were running or queued show as interrupted and can also be continued. An agent that never started begins with the new prompt only. A result that finished but was not yet delivered arrives after the reload.
+Agent conversations are saved under `~/.pi/agent/subagents/<session id>/`. After `/reload` or a resumed session, finished agents can still be read and continued. Agents that were running or queued show as interrupted and can also be continued. An agent that never started begins with the new prompt only. A result that finished but was not yet delivered can arrive after the reload.
+
+If you switch branches with `/tree`, a background result arrives only on a branch that started the run and has not received it. Returning to a branch that already has the result does not repeat it. Running agents stay active and `/agents` still shows agents from the whole session.
 
 ## Costs
 

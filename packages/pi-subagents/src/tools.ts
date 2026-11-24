@@ -163,12 +163,20 @@ export function registerSubagentTools(pi: ExtensionAPI, getManager: SubagentMana
     name: "get_subagent_result",
     label: "Agent result",
     description:
-      "Read the full result of a finished agent by task name. For a running or queued agent, report its status without waiting.",
-    parameters: nameParameter,
+      "Read a finished agent's full result by task name and optional run number. For a running or queued run, report its status without waiting.",
+    parameters: Type.Object({
+      ...nameParameter.properties,
+      run: Type.Optional(
+        Type.Integer({ minimum: 1, description: "Run number. Omit for the latest run." }),
+      ),
+    }),
     async execute(_toolCallId, params) {
       const manager = requireManager(getManager);
-      const record = manager.find(params.name);
-      if (!record) throw new Error(`No agent named "${params.name}" exists in this session.`);
+      const agent = manager.find(params.name);
+      if (!agent) throw new Error(`No agent named "${params.name}" exists in this session.`);
+      const record = manager.runOutcome(agent.id, params.run);
+      if (!record)
+        throw new Error(`Agent "${params.name}" has no saved result for run ${params.run}.`);
       if (!isSubagentFinished(record.status)) {
         return subagentToolResult(
           `${subagentStatusLine(record)} Current activity: ${record.activity}.`,
@@ -177,8 +185,8 @@ export function registerSubagentTools(pi: ExtensionAPI, getManager: SubagentMana
           },
         );
       }
-      manager.markReceipt(record, "consumed");
-      return subagentToolResult(subagentFinishedText(record), { id: record.id });
+      manager.consumeResult(record);
+      return subagentToolResult(subagentFinishedText(record), { id: record.id, run: record.run });
     },
   });
 

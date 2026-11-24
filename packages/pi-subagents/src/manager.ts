@@ -57,7 +57,10 @@ export interface SubagentTokens {
 /** Custom entry type that stores agent records in the main session. */
 export const SUBAGENT_RECORD_ENTRY = "subagents-record";
 
-/** Whether the main model may still receive this run's result automatically. */
+/** Custom entry type that marks a result as read on one conversation branch. */
+export const SUBAGENT_READ_ENTRY = "subagents-read";
+
+/** Saved delivery state. For background runs, receipts only apply on the branch that recorded them. */
 export type SubagentReceipt = "pending" | "unread" | "consumed" | "delivered" | "suppressed";
 
 /** One named agent and its latest run. Saved in the main session with `pi.appendEntry`. */
@@ -165,8 +168,8 @@ export class SubagentManager {
   private readonly live = new Map<string, LiveRun>();
   private readonly queue: string[] = [];
   private readonly listeners = new Set<() => void>();
-  /** How each earlier run of a continued agent ended, by `<id>:<run>`, for its `Agent` card. */
-  private readonly earlierRuns = new Map<string, SubagentRecord>();
+  /** Finished runs by `<id>:<run>`, for `Agent` cards and branch-aware delivery. */
+  private readonly finishedRuns = new Map<string, SubagentRecord>();
   /** Cost of the runs whose usage entry is saved in this session. */
   private savedCost = 0;
   /** Number of saved usage entries in this session. */
@@ -212,7 +215,18 @@ export class SubagentManager {
   runOutcome(id: string, run: number | undefined): SubagentRecord | undefined {
     const record = this.records.get(id);
     if (run === undefined || record?.run === run) return record;
-    return this.earlierRuns.get(`${id}:${run}`) ?? record;
+    return this.finishedRuns.get(`${id}:${run}`);
+  }
+
+  /** Background results that can be delivered on a branch that has not seen them. */
+  finishedBackgroundRuns(): SubagentRecord[] {
+    return [...this.finishedRuns.values()].filter(
+      (record) =>
+        record.background &&
+        record.receipt !== "suppressed" &&
+        record.stoppedBy !== "model" &&
+        record.status !== "interrupted",
+    );
   }
 
   /** Subscribes UI to record changes. Returns the unsubscribe function. */
@@ -222,8 +236,8 @@ export class SubagentManager {
   }
 
   /**
-   * Restores this session's saved agents. Unfinished runs become interrupted and never deliver.
-   * A finished result that was still waiting stays unread, so it is delivered now.
+   * Restores all runs, including ones no longer on the active branch.
+   * Unfinished runs become interrupted and never deliver.
    */
   restore(): void {
     for (const entry of this.ctx.sessionManager.getEntries()) {
@@ -237,7 +251,7 @@ export class SubagentManager {
       this.records.set(record.id, { ...record });
       // Entries are in time order, so the last finished entry of a run is how that run ended.
       if (isSubagentFinished(record.status)) {
-        this.earlierRuns.set(`${record.id}:${record.run}`, { ...record });
+        this.finishedRuns.set(`${record.id}:${record.run}`, { ...record });
       }
     }
     for (const record of this.records.values()) {
@@ -341,8 +355,8 @@ export class SubagentManager {
       pi: this.pi,
       settings: this.settings,
     });
-    // The card of the run that just ended keeps showing that run, not the new one.
-    this.earlierRuns.set(`${record.id}:${record.run}`, { ...record });
+    // Keep an interrupted run's outcome for its card even when it never finished.
+    this.finishedRuns.set(`${record.id}:${record.run}`, { ...record });
     Object.assign(record, {
       status: "queued",
       requestId: this.requestId,
@@ -502,6 +516,7 @@ export class SubagentManager {
     else if (record.receipt === "pending") record.receipt = "unread";
     live.release?.("finished");
     this.saveRunUsage(record, live);
+    this.finishedRuns.set(`${record.id}:${record.run}`, { ...record });
     this.persist(record);
     if (!foreground) this.onRunSettled(record);
     this.pump();
@@ -653,10 +668,9 @@ export class SubagentManager {
     return cost;
   }
 
-  /** Marks a result as returned to the model, so it is never delivered again. */
-  markReceipt(record: SubagentRecord, receipt: SubagentReceipt): void {
-    record.receipt = receipt;
-    this.persist(record);
+  /** Records that the active branch explicitly read this result. */
+  consumeResult(record: SubagentRecord): void {
+    this.pi.appendEntry(SUBAGENT_READ_ENTRY, { id: record.id, run: record.run });
   }
 
   /** Transcript for `/agents`: the live session, or the saved session file. */

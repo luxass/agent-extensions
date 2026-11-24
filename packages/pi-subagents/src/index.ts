@@ -72,7 +72,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
       stopRexStatus = reportSubagentsToRex(current);
     }
     // Last, so the tools exist when a restored result starts a main-model turn.
-    delivery.deliverRestored();
+    delivery.branchChanged();
   });
 
   // A leading type mention asks the main model to start that type. The instruction stays hidden.
@@ -94,6 +94,7 @@ export default function piSubagents(pi: ExtensionAPI): void {
   pi.on("turn_end", (event) => delivery?.turnEnded(event));
 
   pi.on("agent_settled", () => delivery?.agentSettled());
+  pi.on("session_tree", () => delivery?.branchChanged());
 
   pi.on("session_shutdown", async (_event, ctx) => {
     // Delivery stops first, so aborted runs never deliver.
