@@ -46,8 +46,8 @@ catalogs:
 
   opencode:
     "@opencode/plugin": 2.3.2
-    "@opentui/solid": 0.9.3
-    effect: 4.1.4
+    "@opentui/solid": 0.9.7
+    effect: 4.1.5
 
   voice:
     "@luxass/agent-voice": 0.5.2
@@ -64,7 +64,7 @@ catalogs:
   lint:
     oxfmt: 0.73.0
     oxlint: 1.88.0
-    oxlint-tsgolint: 7.0.2007
+    oxlint-tsgolint: 7.0.2008
 
   compiler:
     typescript: 7.0.2
